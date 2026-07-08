@@ -1,0 +1,139 @@
+/* ==========================================================================
+   DESIGN SYSTEM INDUSTRIAL UI - BUTTON COMPONENT
+   ========================================================================== */
+
+:root {
+    /* AROL Palette & Operational States */
+    --arol-blue: #002D54;
+    /* Primary Blue - High visibility */
+    --arol-sky: #407B9E;
+    /* Secondary Blue / Interactive Elements */
+    --arol-red: #C0392B;
+    /* "Error" State / Critical Alarms */
+    --arol-green: #27AE60;
+    /* "Operational" State / Confirmations */
+    --arol-dark: #1A252F;
+    /* Text on light backgrounds */
+    --slate-300: #cbd5e1;
+    /* Borders for outline variant */
+    --slate-200: #e2e8f0;
+    /* Outline variant hover */
+}
+
+/* Base Rugged Style (Mobile-First) */
+.btn-rugged {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    /* MINIMUM TOUCH TARGET (WCAG 2.1 Guidelines for use with gloves) */
+    min-height: 48px;
+    min-width: 48px;
+
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    line-height: 1.5;
+    border: 2px solid transparent;
+    /* Prevents layout shift when outline is activated */
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: all 0.15s ease-in-out;
+
+    /* OPTIMIZATIONS FOR INDUSTRIAL TOUCH SCREENS */
+    touch-action: manipulation;
+    /* Removes the 300ms double-tap delay on mobile browsers */
+    -webkit-tap-highlight-color: transparent;
+    /* Disables the default browser blue tap highlight */
+}
+
+/* Instant tactile/visual feedback on click/tap */
+.btn-rugged:active:not(:disabled) {
+    transform: scale(0.96);
+}
+
+/* Accessibility (High-contrast focus ring for physical/keyboard navigation) */
+.btn-rugged:focus {
+    outline: none;
+}
+
+.btn-rugged:focus-visible {
+    box-shadow: 0 0 0 4px rgba(64, 123, 158, 0.5);
+    /* Focus ring based on AROL Sky */
+}
+
+/* --------------------------------------------------------------------------
+   COLOR VARIANTS (Minimum contrast ratio 4.5:1 for dark/reflective environments)
+   -------------------------------------------------------------------------- */
+
+/* Primary (AROL Corporate Blue) */
+.btn-rugged.primary {
+    background-color: var(--arol-blue);
+    color: #ffffff;
+}
+
+.btn-rugged.primary:active:not(:disabled) {
+    background-color: #001c35;
+}
+
+/* Secondary (Action Sky Blue) */
+.btn-rugged.secondary {
+    background-color: var(--arol-sky);
+    color: #ffffff;
+}
+
+.btn-rugged.secondary:active:not(:disabled) {
+    background-color: #2e5d7a;
+}
+
+/* Danger (Alarms/Reset) */
+.btn-rugged.danger {
+    background-color: var(--arol-red);
+    color: #ffffff;
+}
+
+.btn-rugged.danger:active:not(:disabled) {
+    background-color: #962c21;
+}
+
+.btn-rugged.danger:focus-visible {
+    box-shadow: 0 0 0 4px rgba(192, 57, 43, 0.5);
+}
+
+/* Success (Issue Resolution/OK) */
+.btn-rugged.success {
+    background-color: var(--arol-green);
+    color: #ffffff;
+}
+
+.btn-rugged.success:active:not(:disabled) {
+    background-color: #1e8449;
+}
+
+.btn-rugged.success:focus-visible {
+    box-shadow: 0 0 0 4px rgba(39, 174, 96, 0.5);
+}
+
+/* Outline (Manual reading or secondary actions) */
+.btn-rugged.outline {
+    background-color: transparent;
+    border-color: var(--slate-300);
+    color: var(--arol-dark);
+}
+
+.btn-rugged.outline:active:not(:disabled) {
+    background-color: var(--slate-200);
+}
+
+/* --------------------------------------------------------------------------
+   DISABLED STATE (Visible but non-interactive)
+   -------------------------------------------------------------------------- */
+.btn-rugged:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    /* Prevents the active:scale effect */
+}
