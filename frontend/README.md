@@ -31,7 +31,49 @@ src/
 └── main.jsx           # Entry point
 ```
 
+## Visual Flow & Routing Architecture
+
+```text
+================================================================================
+   🗺️ VISUAL FLOW & ROUTING ARCHITECTURE — AROL CHATBOT PLATFORM (react-router)
+================================================================================
+
+              [ PHYSICAL SCAN ] 
+               Scan of QR Code 
+                      │
+                      ▼
+     Route: "/machine/:id" (LandingQR) <───[ MANUAL CLICK ]─── Route: "/" or "/fleet" (FleetView)
+     ─────────────────────────────────                         ─────────────────────────────────
+     * Component: <LandingResolver />                          * Component: <FleetView />
+     * State: loading | error                                  * Actions: Search & Filter [1]
+     * Action: scanMachine(id) [2]                             * Event: onClick ➔ navigate(`/machine/${id}`)
+                      │
+                      │ (Auto-resolves context [2])
+                      ▼
+     Route: "/workspace/:id" (ChatWorkspace)
+     ────────────────────────────────────────
+     * Component: <WorkspaceWrapper /> ➔ <ChatWorkspace />
+     * Layout: Mobile (Tabbed View) vs Tablet (Split-Screen) [1]
+     * App States: Messages, isAiLoading, Active Machine Context [3]
+     │
+     ├─► [Tab 1] Route Path ➔ "chat"
+     │           * Component: <ChatWindow />
+     │           * UI: <ChatBubble /> [4] + <SuggestionChips /> + <ChatInput /> [4]
+     │
+     ├─► [Tab 2] Route Path ➔ "manuals" (RAG)
+     │           * Component: <ManualViewer />
+     │           * Content: PDF rendering with targeted page jumping (via citations) [2]
+     │
+     ├─► [Tab 3] Route Path ➔ "iot"
+     │           * Component: <RealTimeChart />
+     │           * Content: Real-time telemetry widgets (Motor Temperature, Torque) [5]
+     │
+     └─► [Action] "Nuova Scansione" ➔ clearMachine() ➔ navigate("/")
+```
+
 ## Getting Started
+
+
 
 ```bash
 # Install dependencies

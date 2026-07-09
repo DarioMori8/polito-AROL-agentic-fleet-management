@@ -1,0 +1,384 @@
+/* ==========================================================================
+   DESIGN SYSTEM INDUSTRIAL UI - LANDING QR COMPONENT
+   Inherits design tokens and base resets from token.css and base.css
+   ========================================================================== */
+
+.landing-qr-layout {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--arol-blue);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+/* Simulated industrial mesh grid pattern */
+.industrial-mesh-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    opacity: 0.08;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+    background-size: 20px 20px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.landing-card-container {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 440px;
+    background-color: var(--white);
+    border-radius: 24px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+/* BRAND HEADER STYLE */
+.landing-logo-header {
+    text-align: center;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--slate-200);
+    padding-bottom: 16px;
+}
+
+.brand-badge {
+    display: inline-block;
+    background-color: var(--arol-blue);
+    color: var(--white);
+    font-size: 0.9rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.platform-sub-title {
+    color: var(--arol-dark);
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.2px;
+}
+
+/* MAIN STATES CONTAINER */
+.landing-main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 240px;
+    margin-bottom: 24px;
+}
+
+.landing-state-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.state-headline {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--arol-blue);
+    margin: 0 0 10px 0;
+}
+
+.state-headline.text-danger {
+    color: var(--arol-red);
+}
+
+.state-subtext {
+    font-size: 0.9rem;
+    color: #5a6a85;
+    line-height: 1.5;
+    margin: 0 0 20px 0;
+}
+
+/* STATE 1: LOADING SPINNER */
+.spinner-wrapper-rugged {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background-color: var(--arol-sky-light);
+    color: var(--arol-sky);
+    margin-bottom: 18px;
+}
+
+.spinning-icon {
+    animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.tag-pulse-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--arol-gray-light);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--arol-blue);
+}
+
+.dot-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--arol-green);
+    box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.4);
+    animation: pulse-ring 1.5s infinite;
+}
+
+@keyframes pulse-ring {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.7);
+    }
+
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(39, 174, 96, 0);
+    }
+
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(39, 174, 96, 0);
+    }
+}
+
+/* STATE 2: ERROR SCREEN STYLE */
+.error-icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background-color: var(--arol-red-light);
+    color: var(--arol-red);
+    margin-bottom: 18px;
+}
+
+.error-details-box {
+    width: 100%;
+    background-color: var(--arol-red-light);
+    border-left: 4px solid var(--arol-red);
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    text-align: left;
+    color: var(--arol-red);
+    margin-bottom: 24px;
+    box-sizing: border-box;
+}
+
+.action-buttons-stack {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* STATE 3: WAITING FOR SCAN (SCAN DECO) */
+.qr-scanner-illustration {
+    position: relative;
+    width: 90px;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--arol-gray-light);
+    border-radius: 16px;
+    color: var(--arol-blue);
+    margin-bottom: 18px;
+    overflow: hidden;
+}
+
+.qr-icon-deco {
+    opacity: 0.85;
+}
+
+.scanning-laser-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background-color: var(--arol-red);
+    box-shadow: 0 0 8px var(--arol-red);
+    animation: laser-slide 2.5s ease-in-out infinite;
+}
+
+@keyframes laser-slide {
+    0% {
+        top: 0%;
+    }
+
+    50% {
+        top: 96%;
+    }
+
+    100% {
+        top: 0%;
+    }
+}
+
+.manual-access-section {
+    width: 100%;
+}
+
+.divider-text {
+    display: block;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin: 16px 0;
+    position: relative;
+}
+
+.divider-text::before,
+.divider-text::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 38%;
+    height: 1px;
+    background-color: var(--slate-200);
+}
+
+.divider-text::before {
+    left: 0;
+}
+
+.divider-text::after {
+    right: 0;
+}
+
+/* RUGGED MANUAL FORM STYLING */
+.manual-input-form {
+    width: 100%;
+    text-align: left;
+    box-sizing: border-box;
+    animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.form-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--arol-dark);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-input-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.rugged-text-input {
+    flex-grow: 1;
+    min-height: 48px;
+    /* Target tocco conforme WCAG */
+    border: 2px solid var(--slate-300);
+    border-radius: 12px;
+    padding: 0 14px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--arol-dark);
+    background-color: var(--white);
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.rugged-text-input:focus {
+    border-color: var(--arol-sky);
+    box-shadow: 0 0 0 3px rgba(64, 123, 158, 0.25);
+}
+
+.input-submit-btn {
+    white-space: nowrap;
+}
+
+.cancel-link-btn {
+    background: none;
+    border: none;
+    color: #7f8c8d;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-top: 10px;
+    padding: 8px;
+    width: 100%;
+    text-align: center;
+    min-height: 36px;
+}
+
+/* CORPORATE FOOTER */
+.landing-corporate-footer {
+    border-top: 1px solid var(--slate-200);
+    padding-top: 14px;
+    text-align: center;
+}
+
+.landing-corporate-footer p {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin: 0 0 4px 0;
+    font-weight: 600;
+}
+
+.footer-doc-link {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--arol-sky);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}

@@ -1,10 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { MachineProvider } from '@/context/MachineContext.jsx'
 import '@/styles/index.css'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <MachineProvider>
+      <App />
+    </MachineProvider>
   </StrictMode>,
 )

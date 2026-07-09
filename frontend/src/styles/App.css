@@ -1,0 +1,272 @@
+/* ==========================================================================
+   DESIGN SYSTEM INDUSTRIAL UI - ROOT APP LAYOUT & FLEET VIEWER
+   Inherits design tokens and base resets from token.css and base.css
+   ========================================================================== */
+
+.app-viewport {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--arol-light);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   FLEET VIEW PANEL (Flotta Macchinari Page)
+   ========================================================================== */
+
+.fleet-view-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--arol-gray-light);
+  padding: 16px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.fleet-header {
+  text-align: left;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--slate-200);
+  padding-bottom: 12px;
+}
+
+.fleet-brand {
+  display: inline-block;
+  background-color: var(--arol-blue);
+  color: var(--white);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.fleet-title {
+  color: var(--arol-blue);
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.fleet-subtitle {
+  color: #7f8c8d;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 2px 0 0 0;
+}
+
+/* Main Fleet Content Viewport */
+.fleet-main {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* Ruggedized Search Input Field */
+.search-bar-rugged {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  color: #7f8c8d;
+}
+
+.search-input-rugged {
+  width: 100%;
+  min-height: 48px;
+  /* Touch target size compliant */
+  border: 2px solid var(--slate-300);
+  border-radius: 12px;
+  padding: 0 14px 0 42px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--arol-dark);
+  background-color: var(--white);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-input-rugged:focus {
+  border-color: var(--arol-sky);
+  box-shadow: 0 0 0 3px rgba(64, 123, 158, 0.25);
+}
+
+/* Category Filter Row */
+.filter-chips-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  /* Hide scrollbars for slick touch view */
+}
+
+.filter-chips-row::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-chip {
+  min-height: 40px;
+  min-width: 64px;
+  padding: 8px 16px;
+  background-color: var(--white);
+  border: 1px solid var(--slate-300);
+  border-radius: 20px;
+  color: var(--arol-dark);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.filter-chip.active {
+  background-color: var(--arol-blue);
+  color: var(--white);
+  border-color: var(--arol-blue);
+}
+
+/* Fleet List / Cards Layout (Matching Sketch UIUX Capper cards) */
+.fleet-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.machine-card-rugged {
+  background-color: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  gap: 16px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.machine-card-rugged:active {
+  transform: scale(0.98);
+  background-color: var(--arol-gray-light);
+}
+
+/* Highlight border for machines currently in Alarm state */
+.machine-card-rugged.border-alarm {
+  border-left: 5px solid var(--arol-red);
+}
+
+.card-hardware-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background-color: var(--arol-sky-light);
+  color: var(--arol-blue);
+  flex-shrink: 0;
+}
+
+.machine-card-rugged.border-alarm .card-hardware-icon-wrapper {
+  background-color: var(--arol-red-light);
+  color: var(--arol-red);
+}
+
+.card-info {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.card-machine-name {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--arol-blue);
+  margin: 0 0 2px 0;
+}
+
+.card-machine-id {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7f8c8d;
+  margin-bottom: 4px;
+}
+
+.card-machine-dept {
+  font-size: 0.85rem;
+  color: var(--arol-dark);
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.card-status-row {
+  display: flex;
+}
+
+.card-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.card-badge.badge-error {
+  background-color: var(--arol-red-light);
+  color: var(--arol-red);
+}
+
+.card-badge.badge-success {
+  background-color: rgba(39, 174, 96, 0.08);
+  color: var(--arol-green);
+}
+
+/* FLEET FOOTER */
+.fleet-footer {
+  border-top: 1px solid var(--slate-200);
+  padding-top: 12px;
+  text-align: center;
+  margin-top: auto;
+}
+
+.fleet-footer p {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin: 0 0 2px 0;
+  font-weight: 600;
+}
+
+.footer-system-tag {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--arol-sky);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
