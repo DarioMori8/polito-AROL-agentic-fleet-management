@@ -1,24 +1,8 @@
 /* ==========================================================================
-   DESIGN SYSTEM INDUSTRIAL UI - BUTTON COMPONENT
+   BUTTON COMPONENT CSS
+   Tokens: see tokens.css
    ========================================================================== */
 
-:root {
-    /* AROL Palette & Operational States */
-    --arol-blue: #002D54;
-    /* Primary Blue - High visibility */
-    --arol-sky: #407B9E;
-    /* Secondary Blue / Interactive Elements */
-    --arol-red: #C0392B;
-    /* "Error" State / Critical Alarms */
-    --arol-green: #27AE60;
-    /* "Operational" State / Confirmations */
-    --arol-dark: #1A252F;
-    /* Text on light backgrounds */
-    --slate-300: #cbd5e1;
-    /* Borders for outline variant */
-    --slate-200: #e2e8f0;
-    /* Outline variant hover */
-}
 
 /* Base Rugged Style (Mobile-First) */
 .btn-rugged {
@@ -31,8 +15,8 @@
     min-width: 48px;
 
     padding: 12px 20px;
-    border-radius: 12px;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    border-radius: var(--radius-lg);
+    font-family: var(--font-primary);
     font-weight: 700;
     font-size: 1rem;
     line-height: 1.5;

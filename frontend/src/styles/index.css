@@ -1,1 +1,8 @@
-/* Global styles */
+/* ==========================================================================
+   GLOBAL STYLE ENTRY POINT — imported once in main.jsx
+   Layers are loaded in dependency order: tokens → base
+   Component CSS is imported by each component individually.
+   ========================================================================== */
+
+@import './tokens.css';
+@import './base.css';

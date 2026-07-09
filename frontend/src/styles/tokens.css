@@ -1,0 +1,35 @@
+/* ==========================================================================
+   DESIGN TOKENS — Single Source of Truth for the AROL Design System
+   ========================================================================== */
+
+:root {
+  /* === AROL Brand Colors === */
+  --arol-blue: #002D54;             /* Primary Blue - User messages and header */
+  --arol-sky: #407B9E;              /* Sky Blue - Citations and links */
+  --arol-sky-light: rgba(64, 123, 158, 0.12);  /* Citations background */
+  --arol-dark: #1A252F;             /* High-readability text */
+  --arol-gray-light: #F0F2F5;       /* Assistant messages / page background */
+  --arol-red: #C0392B;              /* Alarms and network error state */
+  --arol-red-light: rgba(192, 57, 43, 0.08);   /* Error background */
+  --arol-green: #27AE60;            /* Success / ready states */
+  --white: #ffffff;
+
+  /* === Neutral / Slate === */
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+
+  /* === Typography === */
+  --font-primary: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* === Spacing (4px grid) === */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+
+  /* === Border Radius === */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}

@@ -1,5 +1,6 @@
 import React from 'react';
 import Button from '../components/ui/Button';
+import '../styles/index.css';
 import '../styles/Button.css';
 
 export default {
@@ -19,7 +20,7 @@ export default {
     disabled: {
       name: 'Disabilitato (disabled)',
       control: { type: 'boolean' }, // Genera un interruttore ON/OFF (toggle)
-      description: 'Disabilita l’interazione (es. perdita segnale Wi-Fi o caricamento)',
+      description: "Disabilita l'interazione (es. perdita segnale Wi-Fi o caricamento)",
       table: {
         defaultValue: { summary: 'false' },
       },

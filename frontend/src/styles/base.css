@@ -1,0 +1,17 @@
+/* ==========================================================================
+   BASE — Global Reset & Body Defaults
+   ========================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-primary);
+  color: var(--arol-dark);
+  background-color: var(--arol-gray-light);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

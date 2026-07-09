@@ -1,0 +1,170 @@
+/* ==========================================================================
+   CHATINPUT COMPONENT
+   Inherits design tokens and base resets from token.css and base.css
+   ========================================================================== */
+
+.chat-input-form {
+  width: 100%;
+  background-color: var(--white);
+  border-top: 1px solid var(--slate-200);
+  padding: 8px 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Dynamic Attachment Preview Bar */
+.attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--arol-sky-light);
+  border: 1px solid rgba(64, 123, 158, 0.2);
+  border-radius: 8px;
+  padding: 6px 12px;
+  max-width: fit-content;
+}
+
+.preview-icon {
+  color: var(--arol-sky);
+}
+
+.preview-name {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--arol-dark);
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remove-attachment-btn {
+  background: transparent;
+  border: none;
+  color: var(--arol-red);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 50%;
+  transition: background-color 0.1s;
+}
+
+.remove-attachment-btn:active {
+  background-color: rgba(192, 57, 43, 0.1);
+}
+
+/* Container for text and action buttons */
+.chat-input-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Touch Action Buttons (Min 48x48px Touch Target conform to WCAG 2.1) */
+.input-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  min-width: 48px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  background-color: var(--arol-gray-light);
+  color: var(--arol-dark);
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.input-action-btn:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.input-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Speech-to-Text Button states */
+.speech-btn {
+  background-color: var(--arol-gray-light);
+  color: var(--arol-dark);
+}
+
+.speech-btn.listening {
+  background-color: var(--arol-red-light);
+  color: var(--arol-red);
+  border: 2px solid var(--arol-red);
+  animation: pulse-red 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Attachment Button states */
+.attachment-btn {
+  background-color: var(--arol-gray-light);
+  color: var(--arol-dark);
+}
+
+/* Send Button states */
+.send-btn {
+  background-color: var(--arol-blue);
+  color: var(--white);
+}
+
+.send-btn:active:not(:disabled) {
+  background-color: #001c35;
+}
+
+.send-btn:disabled {
+  background-color: var(--arol-gray-light);
+  color: #94a3b8;
+}
+
+/* Growing Textarea */
+.chat-textarea {
+  flex-grow: 1;
+  min-height: 48px;
+  max-height: 120px;
+  border: 1px solid var(--slate-300);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--arol-dark);
+  background-color: var(--white);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.chat-textarea:focus {
+  border-color: var(--arol-sky);
+  box-shadow: 0 0 0 3px rgba(64, 123, 158, 0.25);
+}
+
+.chat-textarea:disabled {
+  background-color: var(--arol-gray-light);
+  cursor: not-allowed;
+}

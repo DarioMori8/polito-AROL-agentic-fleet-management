@@ -1,0 +1,224 @@
+/* ==========================================================================
+   CHAT BUBBLE COMPONENT CSS
+   Tokens: see tokens.css
+   ========================================================================== */
+
+
+/* Main container for the message row */
+.chat-row {
+  display: flex;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+/* Alignment based on sender */
+.chat-row.user {
+  justify-content: flex-end;
+}
+
+.chat-row.assistant {
+  justify-content: flex-start;
+}
+
+/* Message block wrapper (contains sender label, bubble, and timestamp) */
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%; /* Optimized for 5" to 7" mobile screens */
+}
+
+.chat-row.user .message-wrapper {
+  align-items: flex-end;
+}
+
+.chat-row.assistant .message-wrapper {
+  align-items: flex-start;
+}
+
+/* Sender Label (e.g.: "Main Assistant (AI)") */
+.message-sender {
+  font-family: var(--font-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7f8c8d;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* BASE MESSAGE BUBBLE */
+.bubble {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-xl);
+  font-family: var(--font-primary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  position: relative;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* USER bubble style (Right) */
+.chat-row.user .bubble {
+  background-color: var(--arol-blue);
+  color: var(--white);
+  border-bottom-right-radius: 4px; /* Right-side cut */
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* AI ASSISTANT bubble style (Left) */
+.chat-row.assistant .bubble {
+  background-color: var(--white);
+  color: var(--arol-dark);
+  border-top-left-radius: 4px; /* Left-side cut */
+  border: 1px solid #e2e8f0;
+}
+
+/* FIX FOR RICH TEXT ELEMENTS (Markdown/Tables/Lists) */
+.bubble p {
+  margin: 0 0 8px 0;
+}
+.bubble p:last-child {
+  margin-bottom: 0;
+}
+
+/* Bullet lists for step-by-step troubleshooting instructions */
+.bubble ul, .bubble ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.bubble li {
+  margin-bottom: 4px;
+}
+
+/* TECHNICAL MANUAL CITATIONS SECTION (WCAG touch-target compliant) */
+.citations-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #edf2f7;
+  width: 100%;
+}
+
+.citation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--arol-sky-light);
+  color: var(--arol-sky);
+  border: 1px solid rgba(64, 123, 158, 0.25);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  
+  /* SAFE TOUCH TARGET FOR GLOVED OPERATORS */
+  min-height: 36px; 
+  user-select: none;
+}
+
+.citation-badge:active {
+  background-color: rgba(64, 123, 158, 0.25);
+  transform: scale(0.95);
+}
+
+/* MANUAL ICON IN CITATION BADGE */
+.citation-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* FOOTER DETAILS: TIMESTAMP AND NETWORK STATUS */
+.bubble-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.chat-row.user .bubble-footer {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.chat-row.assistant .bubble-footer {
+  color: #7f8c8d;
+}
+
+/* SEND ERROR STATE (Weak Factory/Department Connectivity) */
+.bubble-error-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background-color: var(--arol-red-light);
+  border: 1px solid rgba(192, 57, 43, 0.2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  margin-top: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.error-text {
+  color: var(--arol-red);
+  font-family: var(--font-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-grow: 1;
+}
+
+.retry-button {
+  background-color: var(--arol-red);
+  color: var(--white);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 32px; /* Touch target optimized for quick actions */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+.retry-button:active {
+  background-color: #962c21;
+}
+
+/* STREAMING LOADING ANIMATION (SSE / PENDING) */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--arol-sky);
+  border-radius: 50%;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1.0); }
+}

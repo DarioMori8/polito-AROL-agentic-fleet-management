@@ -1,0 +1,209 @@
+/* ==========================================================================
+   DESIGN SYSTEM INDUSTRIAL UI - CHATWINDOW CSS
+   Inherits design variables from token.css and base.css (var(--arol-blue), etc.)
+   ========================================================================== */
+
+.chat-window-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: var(--arol-gray-light);
+  box-sizing: border-box;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 1. Header (Mobile-Optimized Height 64px) */
+.chat-header {
+  display: flex;
+  align-items: center;
+  height: 64px;
+  background-color: var(--arol-blue);
+  color: var(--white);
+  padding: 0 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  box-sizing: border-box;
+}
+
+.header-back-btn {
+  background: transparent;
+  border: none;
+  color: var(--white);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  min-height: 48px;
+  /* Touch target */
+  min-width: 48px;
+  border-radius: 50%;
+  transition: background-color 0.15s;
+}
+
+.header-back-btn:active {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.header-machine-info {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.header-operator-profile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.15);
+  color: var(--white);
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.machine-name {
+  font-family: var(--font-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.machine-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.machine-hardware-icon {
+  color: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+.machine-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.machine-id {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+/* Status Badges for Industrial Environment */
+.status-indicator {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-indicator.badge-success {
+  background-color: rgba(39, 174, 96, 0.2);
+  color: #2ecc71;
+}
+
+.status-indicator.badge-error {
+  background-color: rgba(192, 57, 43, 0.25);
+  color: #ff6b6b;
+}
+
+.status-indicator.badge-warning {
+  background-color: rgba(230, 126, 34, 0.25);
+  color: #f39c12;
+}
+
+
+/* 2. Messages Feed (Scrollable Area) */
+.chat-messages-viewport {
+  flex-grow: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Momentum scroll for iOS devices */
+  padding: 16px 0;
+  box-sizing: border-box;
+}
+
+/* Standard scrollbar styling for rugged panels */
+.chat-messages-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-messages-viewport::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+.messages-scroll-area {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+/* Thinking / Streaming Indicator */
+.thinking-bubble {
+  background-color: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-lg);
+  border-top-left-radius: 4px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.thinking-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.thinking-dots .dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--arol-sky);
+  border-radius: 50%;
+  animation: streamDot 1.4s infinite ease-in-out both;
+}
+
+.thinking-dots .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.thinking-dots .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes streamDot {
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1.0);
+  }
+}
+
+/* 3. Footer Controls */
+.chat-footer-controls {
+  width: 100%;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  background-color: var(--white);
+}
