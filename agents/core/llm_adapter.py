@@ -36,7 +36,7 @@ class OllamaAdapter(LLMAdapter):
         if tools:
             payload["tools"] = tools
 
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=100) as client:
             r = await client.post(f"{self.base_url}/api/chat", json=payload)
             r.raise_for_status()
 
