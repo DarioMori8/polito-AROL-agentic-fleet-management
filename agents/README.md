@@ -1,1 +1,139 @@
 # Agents
+
+Setup Manuals Agent — Guida di installazione
+
+Questa guida ti accompagna dall'installazione di Ollama fino al primo test di un prompt reale tramite l'interfaccia interattiva dell'API.
+
+## Prerequisiti
+
+- Git installato
+- Python 3.12 installato
+- (Opzionale ma consigliata) GPU NVIDIA con driver aggiornati — verifica con:
+
+  ```bash
+  nvidia-smi
+  ```
+
+  Deve mostrare la scheda video e la VRAM disponibile. Se il comando non esiste o dà errore, il modello girerà su CPU (più lento ma funziona comunque).
+
+## 1. Installare Ollama
+
+**Windows**: scarica l'installer da [ollama.com/download](https://ollama.com/download) ed eseguilo. Ollama parte automaticamente come servizio in background dopo l'installazione (icona nella system tray).
+
+**Linux**:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+## 2. Scaricare il modello
+
+```bash
+ollama pull gpt-oss:20b
+```
+
+> **Attenzione**: sono ~13.8 GB di download. Se la tua GPU ha meno di ~16GB di VRAM, il modello potrebbe non starci tutto — Ollama farà offload parziale su CPU (più lento ma funzionante).
+>
+> Alternativa più leggera:
+> ```bash
+> ollama pull llama3.1:8b
+> ```
+> (in tal caso ricordati di cambiare `OLLAMA_MODEL` nel `.env` al punto 6)
+
+## 3. Verificare che Ollama funzioni
+
+```bash
+ollama run gpt-oss:20b "ciao, rispondi con una sola parola"
+```
+
+Dovrebbe rispondere in pochi secondi (con GPU) o fino a un minuto (solo CPU). Poi verifica che l'API sia raggiungibile:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+Deve elencare il modello scaricato.
+
+## 4. Clonare la repo ed entra in agents
+
+```bash
+git clone <URL-del-repo>
+cd polito-AROL-agentic-fleet-management/agents
+```
+
+## 5. Creare l'ambiente Python
+
+```bash
+python3.12 -m venv .venv
+```
+
+Attivare il venv:
+
+- **Windows (PowerShell)**: `.venv\Scripts\Activate.ps1`
+- **Linux**: `source .venv/bin/activate`
+
+Installare le dipendenze:
+
+```bash
+pip install -r requirements.txt
+```
+
+## 6. Configurare l'ambiente
+
+```bash
+# Linux:
+cp .env.example .env
+# Windows (PowerShell):
+copy .env.example .env
+```
+
+Apri `.env` con un editor di testo e verifica:
+
+```
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gpt-oss:20b
+```
+
+Se hai scaricato un modello diverso al punto 2, aggiorna `OLLAMA_MODEL` di conseguenza.
+
+## 7. Avviare il server
+
+```bash
+uvicorn main:app --reload --port 8001
+```
+
+Output atteso:
+
+```
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8001
+```
+
+Se la porta è già occupata, usa `--port 8002` (e aggiorna gli URL sotto di conseguenza).
+
+## 8. Testare un prompt reale
+
+1. Apri il browser su `http://localhost:8001/docs`
+2. Clicca su **`POST /agents/manuals/search`** per espanderlo
+3. Clicca su **"Try it out"**
+4. Sostituisci il body con:
+
+   ```json
+   {
+     "query": "perché la macchina non funziona?",
+     "machine_id": "2"
+   }
+   ```
+
+5. Clicca **"Execute"**
+6. Attendi la risposta (con `gpt-oss:20b` può richiedere da pochi secondi a circa un minuto, a seconda della GPU) — sotto apparirà "Response body" con `Code: 200` e la risposta generata
+
+## Troubleshooting
+
+| Problema | Causa probabile |
+|---|---|
+| `ModuleNotFoundError` all'avvio di uvicorn | Venv non attivato, o `pip install -r requirements.txt` non eseguito |
+| Timeout / risposta molto lenta | Modello troppo pesante per la GPU/VRAM disponibile — prova `llama3.1:8b` |
+| `Connection refused` su `localhost:11434` | Ollama non è avviato — su Linux: `ollama serve` in un altro terminale |
+| 422 su `/agents/manuals/search` | Il body non è JSON valido — controlla di usare virgolette dritte `"` e non tipografiche `" "` |
