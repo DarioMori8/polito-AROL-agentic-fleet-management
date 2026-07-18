@@ -1,0 +1,27 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Data / persisted volumes (vector store, sqlite, mock data)
+data/
+*.sqlite3
+*.db
+
+# Node (in case anything outside frontend/ ever needs it)
+node_modules/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
