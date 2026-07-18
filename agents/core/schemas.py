@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-class SearchManualTaks(BaseModel):
+class SearchManualTask(BaseModel):
     query: str
     machine_id: str
 
