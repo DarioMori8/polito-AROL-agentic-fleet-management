@@ -51,4 +51,4 @@ class OllamaAdapter(LLMAdapter):
 def get_llm_adapter() -> LLMAdapter:
     if settings.LLM_PROVIDER == "ollama":
         return OllamaAdapter()
-    raise ValueError(f"Provider LLM non supportato: {settings.LLM_PROVIDER}")
+    raise ValueError(f"Provider Not Supported: {settings.LLM_PROVIDER}")
