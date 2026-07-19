@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from app.models.manuals import Citation 
+from contracts import Citation
 
 class ChatResponse(BaseModel):
     answer: str

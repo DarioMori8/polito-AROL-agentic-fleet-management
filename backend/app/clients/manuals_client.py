@@ -2,7 +2,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.config import settings
-from app.models.manuals import SearchManualResponse
+from contracts import SearchManualResponse
 from app.clients.base import ManualClientBase
 from app.clients.exceptions import AgentUnavailableError
 

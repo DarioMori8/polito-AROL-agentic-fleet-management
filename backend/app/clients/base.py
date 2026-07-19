@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from app.models.manuals import SearchManualResponse
+from contracts import SearchManualResponse
 
 class ManualClientBase(ABC):
     @abstractmethod
