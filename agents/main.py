@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from contracts import SearchManualTask, SearchManualResponse
+from core.schemas import SearchManualTask, SearchManualResponse
 from core.llm_adapter import OllamaAdapter
 from manuals_agent.agent import ManualsAgent
 app = FastAPI(title="AROL Agents Service")

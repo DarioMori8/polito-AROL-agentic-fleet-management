@@ -1,6 +1,6 @@
 from core.base_agent import BaseAgent
 from core.llm_adapter import ToolCall, LLMResponse
-from contracts import SearchManualTask, SearchManualResponse, Citation
+from core.schemas import SearchManualTask, SearchManualResponse, Citation
 from manuals_agent.prompts import SYSTEM_PROMPT
 from manuals_agent.tools import TOOLS
 
