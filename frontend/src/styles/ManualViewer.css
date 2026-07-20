@@ -1,0 +1,883 @@
+/* ==========================================================================
+   DESIGN SYSTEM INDUSTRIAL UI - MANUALVIEWER COMPONENT
+   Inherits design tokens and base resets from tokens.css and base.css
+   ========================================================================== */
+
+/* ==========================================================================
+   ROOT CONTAINER
+   ========================================================================== */
+.manual-viewer-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: var(--white);
+  overflow: hidden;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* FULLSCREEN OVERLAY ON RUGGED WORKSPACES */
+.manual-viewer-root.is-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  border-radius: 0;
+}
+
+/* ==========================================================================
+   1. TOP TOOLBAR (Zoom, navigation, fullscreen, document selector)
+   ========================================================================== */
+.viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background-color: var(--arol-blue);
+  color: var(--white);
+  gap: 10px;
+  border-bottom: 2px solid var(--arol-sky);
+  flex-shrink: 0;
+}
+
+/* Left group: book icon + document selector dropdown */
+.toolbar-left-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-grow: 1;
+  max-width: 50%;
+  overflow: hidden;
+}
+
+.toolbar-icon {
+  color: var(--arol-sky-light, #90cdf4);
+  flex-shrink: 0;
+}
+
+.document-selector-dropdown {
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--white);
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 7px 10px;
+  outline: none;
+  cursor: pointer;
+  box-sizing: border-box;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.document-selector-dropdown option {
+  background-color: var(--arol-dark, #0a192f);
+  color: var(--white);
+}
+
+/* Center group: prev button, page counter, next button */
+.toolbar-center-navigation {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.toolbar-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  width: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--white);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.1s ease-in-out;
+}
+
+.toolbar-nav-btn:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.toolbar-nav-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.toolbar-nav-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.page-counter-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--white);
+  white-space: nowrap;
+}
+
+.current-page-tag {
+  font-weight: 800;
+}
+
+.divider-slash {
+  opacity: 0.5;
+}
+
+.total-pages-tag {
+  opacity: 0.75;
+}
+
+/* Right group: search toggle, zoom in/out, fullscreen */
+.toolbar-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  width: 36px;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--white);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+}
+
+.toolbar-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.toolbar-btn:active {
+  transform: scale(0.9);
+}
+
+.toolbar-btn.active,
+.search-toggle-btn.active {
+  background-color: var(--arol-sky, #4299e1);
+  color: var(--white);
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.zoom-percentage {
+  font-size: 0.78rem;
+  font-weight: 800;
+  min-width: 38px;
+  text-align: center;
+  color: var(--white);
+}
+
+/* ==========================================================================
+   2. CONTEXTUAL SEARCH DRAWER (slide-in overlay)
+   ========================================================================== */
+.search-drawer-overlay {
+  position: absolute;
+  top: 58px;
+  left: 0;
+  right: 0;
+  background-color: var(--white);
+  border-bottom: 2px solid var(--slate-200, #e2e8f0);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--slate-200, #e2e8f0);
+  background-color: var(--arol-gray-light, #f8fafc);
+}
+
+.search-drawer-header h3 {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--arol-dark, #1a202c);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.close-drawer-btn {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  color: var(--arol-dark, #1a202c);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 0.1s;
+}
+
+.close-drawer-btn:hover {
+  background-color: var(--slate-200, #e2e8f0);
+}
+
+.search-drawer-body {
+  padding: 10px 14px;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.search-input-wrapper {
+  display: flex;
+  align-items: center;
+  background-color: var(--white);
+  border: 1.5px solid var(--slate-300, #cbd5e0);
+  border-radius: 8px;
+  padding: 0 10px;
+  height: 40px;
+  margin-bottom: 10px;
+}
+
+.search-pane-icon {
+  color: #7f8c8d;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.search-pane-input {
+  flex-grow: 1;
+  border: none;
+  outline: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--arol-dark, #1a202c);
+  background: transparent;
+}
+
+.search-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-no-results {
+  font-size: 0.82rem;
+  color: #7f8c8d;
+  text-align: center;
+  padding: 16px 0;
+  font-weight: 600;
+}
+
+.search-match-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--slate-200, #e2e8f0);
+  background: var(--white);
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.1s, border-color 0.1s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.search-match-card:hover {
+  background-color: var(--arol-sky-light, #ebf8ff);
+  border-color: var(--arol-sky, #4299e1);
+}
+
+.match-doc-name {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--arol-blue, #002D54);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.match-section-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--arol-dark, #1a202c);
+}
+
+.match-title-text {
+  font-size: 0.75rem;
+  color: #5a6a85;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   3. CORE DOCUMENT SCROLLER VIEWPORT
+   ========================================================================== */
+.document-scroller-viewport {
+  flex-grow: 1;
+  background-color: var(--slate-100, #f1f5f9);
+  overflow: auto;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.document-zoom-container {
+  width: 100%;
+  max-width: 860px;
+  transform-origin: top center;
+}
+
+/* A4-style engineering paper sheet */
+.blueprint-paper-sheet {
+  background-color: var(--white);
+  width: 100%;
+  min-height: 580px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--slate-200, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Top header strip */
+.sheet-top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 2px solid var(--arol-blue, #002D54);
+  background-color: var(--arol-blue, #002D54);
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.sheet-doc-title {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.85);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.sheet-section-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--arol-sky-light, #90cdf4);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* Two-column body */
+.sheet-body-content {
+  display: flex;
+  flex-grow: 1;
+  min-height: 0;
+}
+
+/* ==========================================================================
+   4. LEFT COLUMN - CAD BLUEPRINT VISUAL
+   ========================================================================== */
+.blueprint-column-visual {
+  width: 42%;
+  flex-shrink: 0;
+  background-color: #e8edf2;
+  border-right: 2px solid var(--arol-blue, #002D54);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.cad-grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    linear-gradient(rgba(0, 45, 84, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 45, 84, 0.08) 1px, transparent 1px);
+  background-size: 14px 14px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.vector-cad-drawing {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  padding: 20px;
+}
+
+.cad-annotation {
+  position: absolute;
+  font-family: monospace;
+  font-size: 0.58rem;
+  font-weight: 900;
+  color: var(--arol-blue, #002D54);
+  background-color: rgba(255, 255, 255, 0.85);
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 45, 84, 0.2);
+  letter-spacing: 0.3px;
+}
+
+.label-x {
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.label-y {
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+}
+
+/* Roller graphic */
+.vector-roller-graphic {
+  position: relative;
+  width: 90px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.outer-bearing {
+  width: 88px;
+  height: 88px;
+  border: 3px solid var(--arol-blue, #002D54);
+  border-radius: 50%;
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.inner-axis {
+  width: 22px;
+  height: 22px;
+  background-color: var(--arol-blue, #002D54);
+  border-radius: 50%;
+  position: absolute;
+  z-index: 2;
+}
+
+.lube-injection-port {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  background-color: var(--arol-sky, #4299e1);
+  border-radius: 50%;
+  border: 2px solid var(--white);
+  z-index: 3;
+}
+
+/* Cam graphic */
+.vector-cam-graphic {
+  position: relative;
+  width: 100px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eccentric-lobe {
+  width: 70px;
+  height: 50px;
+  border: 3px solid var(--arol-blue, #002D54);
+  border-radius: 50% 50% 45% 45%;
+  background-color: rgba(255, 255, 255, 0.5);
+  position: absolute;
+  top: 0;
+}
+
+.track-slider {
+  position: absolute;
+  bottom: 0;
+  width: 90px;
+  height: 16px;
+  background-color: var(--arol-blue, #002D54);
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+.pressure-direction-arrow {
+  position: absolute;
+  width: 2px;
+  height: 30px;
+  background-color: var(--arol-sky, #4299e1);
+  top: 20px;
+  left: 50%;
+}
+
+/* Anchor graphic */
+.vector-anchor-graphic {
+  position: relative;
+  width: 60px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ground-line {
+  position: absolute;
+  bottom: 10px;
+  left: -20px;
+  right: -20px;
+  height: 3px;
+  background-color: var(--arol-blue, #002D54);
+}
+
+.anchor-stud {
+  width: 12px;
+  height: 80px;
+  background-color: var(--arol-blue, #002D54);
+  border-radius: 2px;
+  position: absolute;
+  bottom: 10px;
+}
+
+.expansion-shield {
+  position: absolute;
+  bottom: 8px;
+  width: 28px;
+  height: 18px;
+  background-color: var(--arol-sky, #4299e1);
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
+/* Motor graphic */
+.vector-motor-graphic {
+  position: relative;
+  width: 100px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.motor-housing {
+  width: 80px;
+  height: 60px;
+  border: 3px solid var(--arol-blue, #002D54);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.5);
+  position: absolute;
+}
+
+.cooling-fins {
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  background: repeating-linear-gradient(90deg,
+      var(--arol-blue, #002D54) 0px, var(--arol-blue, #002D54) 4px,
+      transparent 4px, transparent 8px);
+}
+
+.drive-shaft-coupling {
+  position: absolute;
+  right: -14px;
+  width: 14px;
+  height: 20px;
+  background-color: var(--arol-sky, #4299e1);
+  border-radius: 0 4px 4px 0;
+}
+
+/* Default graphic */
+.vector-default-graphic {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.deco-file-icon {
+  color: var(--arol-blue, #002D54);
+  opacity: 0.4;
+}
+
+.generic-blueprint-block {
+  width: 80px;
+  height: 4px;
+  background-color: var(--arol-blue, #002D54);
+  opacity: 0.25;
+  border-radius: 2px;
+}
+
+/* Engineering footer of CAD column */
+.blueprint-engineering-footer {
+  padding: 7px 12px;
+  border-top: 1px solid rgba(0, 45, 84, 0.2);
+  font-family: monospace;
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #7f8c8d;
+  text-align: center;
+  letter-spacing: 0.3px;
+  background-color: rgba(0, 0, 0, 0.03);
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   5. RIGHT COLUMN - TECHNICAL TEXT SPECS
+   ========================================================================== */
+.blueprint-column-text {
+  flex-grow: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.instruction-headline {
+  font-size: 1rem;
+  font-weight: 850;
+  color: var(--arol-blue, #002D54);
+  margin: 0 0 12px 0;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.instruction-paragraph {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--arol-dark, #1a202c);
+  margin: 0 0 20px 0;
+}
+
+.specs-sub-header {
+  display: flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: var(--arol-dark, #1a202c);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  margin: 0 0 10px 0;
+  padding-bottom: 6px;
+  border-bottom: 1.5px solid var(--slate-200, #e2e8f0);
+}
+
+.specs-rugged-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.specs-rugged-table tbody tr:nth-child(even) {
+  background-color: var(--arol-gray-light, #f8fafc);
+}
+
+.spec-label-cell {
+  padding: 9px 12px;
+  font-weight: 700;
+  color: #4a5568;
+  border: 1px solid var(--slate-200, #e2e8f0);
+  width: 42%;
+  vertical-align: top;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.spec-value-cell {
+  padding: 9px 12px;
+  font-weight: 600;
+  color: var(--arol-dark, #1a202c);
+  border: 1px solid var(--slate-200, #e2e8f0);
+  font-family: monospace;
+  font-size: 0.82rem;
+}
+
+/* Bottom corporate stamp */
+.sheet-bottom-stamping {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 20px;
+  border-top: 1px solid var(--slate-200, #e2e8f0);
+  background-color: var(--arol-gray-light, #f8fafc);
+  font-family: monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   6. AI GROUNDING BANNER
+   ========================================================================== */
+.ai-grounding-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: rgba(39, 174, 96, 0.06);
+  border-top: 3px solid var(--arol-green, #27ae60);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.banner-badge-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.banner-pill {
+  display: inline-block;
+  background-color: var(--arol-green, #27ae60);
+  color: var(--white);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.7px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.banner-source-details {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #4a5568;
+  font-family: monospace;
+}
+
+.banner-snippet-body {
+  flex-grow: 1;
+  background-color: var(--white);
+  border: 1px solid rgba(39, 174, 96, 0.2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.banner-snippet-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--arol-dark, #1a202c);
+  font-style: italic;
+  font-weight: 500;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.banner-action-column {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.copy-snippet-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background-color: var(--white);
+  border: 1px solid var(--slate-300, #cbd5e0);
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--arol-dark, #1a202c);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.copy-snippet-btn:hover {
+  background-color: var(--arol-gray-light, #f8fafc);
+  border-color: var(--arol-sky, #4299e1);
+}
+
+.copy-snippet-btn.copied {
+  background-color: rgba(39, 174, 96, 0.08);
+  border-color: var(--arol-green, #27ae60);
+  color: var(--arol-green, #27ae60);
+}
+
+/* ==========================================================================
+   MOBILE OVERRIDES
+   ========================================================================== */
+@media (max-width: 600px) {
+  .toolbar-left-group {
+    max-width: 40%;
+  }
+
+  .document-selector-dropdown {
+    font-size: 0.75rem;
+    padding: 6px 8px;
+  }
+
+  .zoom-percentage {
+    display: none;
+  }
+
+  .sheet-body-content {
+    flex-direction: column;
+  }
+
+  .blueprint-column-visual {
+    width: 100%;
+    border-right: none;
+    border-bottom: 2px solid var(--arol-blue, #002D54);
+    min-height: 160px;
+  }
+
+  .blueprint-column-text {
+    padding: 16px;
+  }
+
+  .instruction-headline {
+    font-size: 0.9rem;
+  }
+
+  .instruction-paragraph {
+    font-size: 0.82rem;
+  }
+
+  .ai-grounding-banner {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .banner-snippet-body {
+    width: 100%;
+  }
+}

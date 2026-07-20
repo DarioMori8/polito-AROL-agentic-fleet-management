@@ -5,6 +5,7 @@ import LandingQR from './pages/LandingQR';
 import ChatWorkspace from './pages/ChatWorkspace';
 import { Cpu, ShieldAlert, CheckCircle2, Search } from 'lucide-react';
 import './styles/App.css';
+import useChatApi from './hooks/useChatApi';
 
 // TO BE MOVED IN SEPARATE FILE
 /**
@@ -154,7 +155,6 @@ function LandingResolver() {
 }
 
 // TO BE MOVED IN SEPARATE FILE
-// TO BE MODIFIED WHEN REAL BACKEND CHAT HANDLERS IMPLEMENTED
 /**
  * WorkspaceWrapper Component
  * Handles conversational mock API states and feeds ChatWorkspace based on URL route ID
@@ -166,6 +166,9 @@ function WorkspaceWrapper() {
 
   const [messages, setMessages] = useState([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
+
+  // Consume useChatApi custom hook
+  const { sendMessage: apiSendMessage, isLoading, error: apiError } = useChatApi()
 
   // Trigger Context load if the user types or deep-links directly into the workspace URL
   useEffect(() => {
@@ -191,7 +194,7 @@ function WorkspaceWrapper() {
     }
   }, [activeMachine, id]);
 
-  const handleSendMessage = (messageData) => {
+  const handleSendMessage = async (messageData) => {
     const userMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const newUserMessage = {
@@ -205,51 +208,25 @@ function WorkspaceWrapper() {
     setMessages((prev) => [...prev, newUserMessage]);
     setIsAiLoading(true);
 
-    // Simulated RAG agents response (DoD Phase 0/1 compliance)
-    setTimeout(() => {
-      let aiResponseText = '';
-      let citations = [];
-      let confidence = 0.85;
-
-      const lowerText = messageData.text.toLowerCase();
-
-      if (lowerText.includes('vibraz') || lowerText.includes('guasti') || lowerText.includes('troubleshoot')) {
-        aiResponseText = `Il **Troubleshoot Agent** rileva anomalie vibratorie sul basamento primario.\n- Verificare immediatamente la coppia di serraggio dei bulloni di ancoraggio.\n- Controllare lo stato di usura dei rulli folli di scorrimento.\n- Se la vibrazione persiste, spegnere la linea e allineare la camma di chiusura.`;
-        citations = [
-          { docName: 'Manuale_Euro_VP_Manutenzione.pdf', page: 42 },
-          { docName: 'Specifiche_Ancoraggio_AROL.pdf', page: 15 }
-        ];
-        confidence = 0.94;
-      } else if (lowerText.includes('manual') || lowerText.includes('consult')) {
-        aiResponseText = `Ho interrogato il **Manuals Agent** tramite MCP Server.\nI manuali d'uso indicano che la manutenzione preventiva sui rulli folli del modello **${activeMachine.modelType}** deve avvenire ogni 500 ore lavorative o all'apparire del codice allarme AL-VIB-02.`;
-        citations = [
-          { docName: 'Manuale_Euro_VP_Manutenzione.pdf', page: 24 }
-        ];
-        confidence = 0.89;
-      } else if (lowerText.includes('iot') || lowerText.includes('telemetria') || lowerText.includes('dati')) {
-        aiResponseText = `Il **Telemetry Agent** comunica la presenza di un picco termico sui sensori del motore principale:\n- Temperatura basamento: **68.4 °C** (Soglia limite: 60 °C)\n- Coppia di serraggio: **14.2 Nm** (Normale)\n\nSi consiglia di monitorare le vibrazioni o avviare un ciclo di lubrificazione manuale.`;
-        citations = [
-          { docName: 'Specifiche_Serraggio_Q2.pdf', page: 8 }
-        ];
-        confidence = 0.97;
-      } else {
-        aiResponseText = `Ho ricevuto la tua richiesta: "${messageData.text}".\nSto analizzando i dati della flotta con il supporto degli agenti AROL AI. Puoi selezionare una delle scorciatoie rapide per richiedere guide diagnostiche o telemetrie istantanee.`;
-        confidence = 0.75;
+    try {
+      // Call FastAPI endpoint (Pass 'generic' or real machine_id)
+      const aiResponse = await apiSendMessage(messageData.text, id);
+      if (aiResponse) {
+        setMessages((prev) => [...prev, aiResponse]);
       }
-
-      const newAiMessage = {
-        id: `ai-${Date.now()}`,
+    } catch (err) {
+      // If call fails, create an error bubble in chat to allow retry
+      const errorMsg = {
+        id: `err-${Date.now()}`,
         sender: 'assistant',
-        text: aiResponseText,
+        text: `⚠️ I couldn't contact the Orchestrator AI. ${err.message || ''}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: 'sent',
-        citations: citations,
-        metadata: { confidence: confidence }
+        status: 'error'
       };
+      setMessages((prev) => [...prev, errorMsg]);
+    }
 
-      setMessages((prev) => [...prev, newAiMessage]);
-      setIsAiLoading(false);
-    }, 1200);
+    setIsAiLoading(false);
   };
 
   const handleSuggestionClick = (chipId, actionText) => {

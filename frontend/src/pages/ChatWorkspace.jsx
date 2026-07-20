@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MessageSquare, LineChart, BookOpen, RotateCcw } from 'lucide-react';
 import { useMachine } from '../context/MachineContext';
 import ChatWindow from '../components/chat/ChatWindow';
+import ManualViewer from '../components/manuals/ManualViewer';
 import '../styles/ChatWorkspace.css';
 
 /**
@@ -108,9 +109,13 @@ export default function ChatWorkspace({
                             </button>
                         </div>
 
-                        <div className="pane-content-viewport">
-                            {activeTab === 'iot' || activeTab === 'chat' ? (
-                                /* IoT Dashboard Mock Skeleton (Fase 0/1 Compliance) */
+                        {/* Reset padding to 0 when manuals are active to prevent double scrollbars on rugged screens */}
+                        <div
+                            className="pane-content-viewport"
+                            style={{ padding: activeTab === 'manuals' ? 0 : '20px' }}
+                        >
+                            {activeTab === 'iot' ? (
+                                /* IoT Dashboard Mock Skeleton */
                                 <div className="pane-skeleton iot-skeleton">
                                     <div className="skeleton-kpi-grid">
                                         <div className="skeleton-kpi-card">
@@ -129,36 +134,11 @@ export default function ChatWorkspace({
                                     </div>
                                 </div>
                             ) : (
-                                /* Manual Viewer Mock Skeleton (Fase 0/1 Compliance) */
-                                <div className="pane-skeleton manuals-skeleton">
-                                    <div className="pdf-viewer-header">
-                                        <BookOpen size={18} style={{ color: 'var(--arol-sky)' }} />
-                                        <span className="pdf-title">
-                                            {selectedCitation ? selectedCitation.docName : 'Seleziona una citazione per visualizzare il capitolo'}
-                                        </span>
-                                        {selectedCitation?.page && (
-                                            <span className="pdf-page-indicator">Pagina {selectedCitation.page}</span>
-                                        )}
-                                    </div>
-                                    <div className="pdf-canvas-mock">
-                                        {selectedCitation ? (
-                                            <div className="pdf-extracted-page-text">
-                                                <h4>CAPITOLO 4.2 - RISOLUZIONE DELLE VIBRAZIONI ANOMALE (PAG. {selectedCitation.page})</h4>
-                                                <p>
-                                                    [ESTRATTO DAL MANUALE DI SINTESI RAG] ...In presenza di una vibrazione oscillante registrata sull'asse primario
-                                                    del tappatore Euro VP, ispezionare il serraggio dei rulli folli. La coppia di serraggio standard non deve
-                                                    scendere sotto la soglia di 14 Nm...
-                                                </p>
-                                                <span className="rag-grounding-marker">Fonte verificata dal Manuals Agent</span>
-                                            </div>
-                                        ) : (
-                                            <div className="pdf-empty-prompt">
-                                                <BookOpen size={48} className="deco-icon" />
-                                                <p>Tocca un badge di citazione della chat RAG (es: Manuale p. 24) per caricare istantaneamente la pagina esatta del documento.</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                /* Real interactive ManualViewer */
+                                <ManualViewer
+                                    selectedCitation={selectedCitation}
+                                    defaultDoc="Manuale_Euro_VP_Manutenzione.pdf"
+                                />
                             )}
                         </div>
                     </main>
@@ -212,32 +192,14 @@ export default function ChatWorkspace({
                         {activeTab === 'manuals' && (
                             <div className="mobile-pane-wrapper">
                                 <header className="mobile-pane-header">
-                                    <h2>Manuale d'Uso & RAG</h2>
+                                    <h2>Technical Documentation</h2>
                                     <span className="machine-tag">{activeMachine.name}</span>
                                 </header>
-                                <div className="pane-content-viewport">
-                                    <div className="pane-skeleton manuals-skeleton">
-                                        <div className="pdf-viewer-header">
-                                            <BookOpen size={16} />
-                                            <span className="pdf-title-text">
-                                                {selectedCitation ? selectedCitation.docName : 'Seleziona una citazione'}
-                                            </span>
-                                        </div>
-                                        <div className="pdf-canvas-mock">
-                                            {selectedCitation ? (
-                                                <div className="pdf-extracted-page-text">
-                                                    <h4>CAPITOLO (PAG. {selectedCitation.page})</h4>
-                                                    <p>
-                                                        ...Estratto testuale simulato per l'operatore mobile. Il testo corrisponde alla pagina {selectedCitation.page} del manuale tecnico di fabbrica...
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className="pdf-empty-prompt">
-                                                    <p>Nessun documento caricato. Clicca sulle fonti citate nella chat per aprire il manuale tecnico.</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+                                <div className="pane-content-viewport" style={{ padding: 0 }}>
+                                    <ManualViewer
+                                        selectedCitation={selectedCitation}
+                                        defaultDoc="Manuale_Euro_VP_Manutenzione.pdf"
+                                    />
                                 </div>
                             </div>
                         )}
