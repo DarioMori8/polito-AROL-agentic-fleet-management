@@ -1,9 +1,5 @@
 # Agents
 
-Setup Manuals Agent — Guida di installazione
-
-Questa guida ti accompagna dall'installazione di Ollama fino a un test end-to-end del Manuals Agent: domanda → ricerca nel manuale → risposta con citazioni reali.
-
 ## Prerequisiti
 
 - Git installato
