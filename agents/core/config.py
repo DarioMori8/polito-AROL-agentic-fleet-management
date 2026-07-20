@@ -7,13 +7,15 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "ollama"  
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str 
+    OLLAMA_MODEL: str
+    EMBEDDING_MODEL: str = "nomic-embed-text"
 
     # Other examples:
     # ANTHROPIC_API_KEY: str | None = None
-    # ANTHROPIC_MODEL: str = "claude-sonnet-5" 
+    # ANTHROPIC_MODEL: str = "claude-sonnet-5"
 
     MAX_ITERATIONS: int = 5
+    CHROMA_PATH: str = "./data/chroma"
 
 
 settings = Settings()
