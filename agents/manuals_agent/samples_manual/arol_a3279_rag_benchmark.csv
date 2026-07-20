@@ -1,0 +1,51 @@
+id,section,question,answer,page_reference
+1,General Information,Under which EC Directive annex does AROL self-certify the CE marking of this machine?,"The machine falls within Annex II A of Directive 2006/42/EC, so AROL affixes the CE marking by self-certification.",p. 1
+2,General Information,Where is the machine's identification plate located?,On the rear part of the machine base.,p. 2
+3,General Information,For what kinds of damage does AROL decline liability under the warranty terms?,"Acts of God, wrong maneuvers, failed maintenance, damage to electric/electronic components from condensate or contact with outer conductors, and any incorrect or improper use.",p. 4
+4,General Information,How should the Use and Maintenance manual be stored?,"In the room where the machine operates, protected from humidity, without damaging, removing, adding to, or editing it.",p. 5
+5,General Information,"What must the customer arrange before installation, according to the manual?","Power supply with ground wire, pneumatic supply, overcurrent/indirect-contact protection (a differential switch is recommended), maintenance tools/consumables, and suitable lifting means.",p. 6
+6,General Information,What information should be provided when requesting an AROL Technical Service intervention?,"Details of the fault, the checks already performed, the adjustments made and their effects, and any other useful information.",p. 6
+7,Technical Data,What type of caps does the CLOSYS EAGLE VP apply?,Pre-threaded (screw) caps.,p. 9
+8,Technical Data,What is the nominal production capacity of machine A3279?,"1,800 pieces per hour.",p. 10
+9,Technical Data,What is the total installed electrical power of the machine?,2.24 kW.,p. 10
+10,Directives & Restrictions,Within what ambient temperature range must the machine operate?,Between 5°C and 40°C.,p. 14
+11,Directives & Restrictions,Is the machine suitable for use in explosive atmospheres?,"No, it must not be used in explosive or partially explosive atmospheres.",p. 14
+12,Directives & Restrictions,What noise level was measured around the machine during nominal automatic operation?,"Below 80 dB(A) Leq, measured at six points around the machine perimeter.",p. 16
+13,Safety,Who is authorized to operate this machine?,Only operators trained on-site by AROL technicians who fully understand the instructions in this manual.,p. 18
+14,Safety,What must be done before accessing an area protected by a fixed guard?,The machine must be put into 'maintenance mode/status' first.,p. 20
+15,Safety,What are examples of the machine's passive safeties?,"Fixed guards such as the basement guard, entry tunnel, exit tunnel, and head protection guard.",p. 21-22
+16,Safety,What are examples of active safeties on the machine?,Interlocked mobile guards (front/rear safety doors) and the emergency mushroom button on the control panel.,p. 22
+17,Safety,What should be done if a warning or obligation plate becomes illegible or detaches?,It must be replaced with a new one ordered from AROL; it must never simply be left off.,p. 23
+18,First Start-Up,What should be checked before the very first start-up of the machine?,The machine's rotating direction.,p. 37
+19,Machine Controls,What does the AUT/MAN key selector on the control panel do?,In AUT it engages automatic rotation of the machine; in MAN it engages jog (pulse) rotation.,p. 41
+20,Machine Controls,"What does the SAFETY RESET button do, and when is it active?",Pressing it resets tripped safeties; the button only lights up and works after a safety device has intervened.,p. 42
+21,Machine Controls,What does a flashing red light on the light column indicate?,That an alarm has occurred or a safety device has activated.,p. 43
+22,Operator Panel,What are the three machine operating modes shown on the status page?,"MANUAL, AUTOMATIC, and RUNNING.",p. 48
+23,Alarms,The panel shows 'MACHINE MOTOR OVERLOAD (QM1)'. What does it mean and what should I do?,"The magneto-thermal switch protecting the main motor has tripped due to excessive stress; check the cause, reset the switch inside the electric board, and restart the machine.",p. 53
+24,Alarms,What does the alarm 'HEADS MOTOR DRIVE ALARM (U2)' tell you to do?,Refer to the frequency converter's instruction manual to check the cause of the error it generated.,p. 54
+25,Alarms,What should I do if 'LOW AIR PRESSURE (SP1)' appears?,"Check for the presence of air in the pneumatic circuit and the correct operation of solenoid valve YV1 and pressure switch SP1, then press RESET and START.",p. 51
+26,Alarms,What does 'CAPS SORTER LATERAL DOOR OPEN (SQ41A)' mean and how is it fixed?,"The sorter's side door is open, usually from excess pressure due to a clogged delivery chute; clear the chute and outlet, close the door, then press RESET and START.",p. 51
+27,Alarms,What does 'DUST EXTRACTOR FULL' mean and how is it cleared?,"The dust recovery tank is full; empty it, then press RESET and START.",p. 56
+28,Alarms,"What does the 'VACUUM CIRCUIT ALARM' indicate, and does it stop the machine?",The vacuostat (VP1) has detected capped bottles that did not reach the desired vacuum value; this alarm does not stop the machine.,p. 57
+29,Alarms,What does 'MINIMUM CAPS LEVEL IN CAPS STORAGE TANK (B14)' mean?,The sensor in the elevator tank detects a lack of caps; refill the tank until the sensor is no longer exposed. Machine operation is not stopped.,p. 57
+30,Alarms,What causes the 'FALLEN BOTTLE ALARM (B23)'?,A bottle at the machine entrance is in an incorrect position; adjust the bottle's position and reset.,p. 57
+31,Alarms,The machine shows 'MACHINE MOTOR FAN OVERLOAD (QM1F)'. What is the cause and remedy?,"The magneto-thermal switch protecting the motor fan has tripped from excessive stress; check the cause, reset the switch in the electric board, and restart.",p. 59
+32,Alarms,What does a 'COOLING UNIT OVERLOAD' alarm indicate?,"The magneto-thermal switch protecting the cooling unit motor has tripped due to excessive stress; check the cause, reset the switch, and restart the machine.",p. 59
+33,Alarms,"If 'PLC BATTERY FAULT' appears, what should be checked?","Check the PLC battery connection and, if necessary, replace the battery.",p. 59
+34,Alarms,What is indicated by 'MACHINE MOTOR DISCONNECT OFF (QS1)' and how is it resolved?,The motor's disconnect switch has been opened; close the disconnect contact and press START to restart the machine.,p. 58
+35,Use of the Machine,How does the machine start automatically once containers are present at the entrance?,A photocell detects a set number of containers at the entrance and allows automatic start-up at a fixed speed once START has been pressed.,p. 102
+36,Use of the Machine,What happens when the exit belt photocell detects container accumulation?,"The machine's rotation stops temporarily, signaled by a flashing light, until the accumulation clears and the machine restarts automatically.",p. 102
+37,Use of the Machine,What happens immediately when the EMERGENCY STOP button is pressed?,"All machine functions stop, the SAFETY DEVICE lamp lights up, and the display shows the relevant message.",p. 103
+38,Maintenance,What must be done before performing any lubrication step?,The machine must be stopped and set to 'Maintenance status.',p. 120
+39,Maintenance,What happens to mineral oils left unused for over six months?,They lose their lubricating properties and must be changed.,p. 120
+40,Maintenance,How often should the capping head be cleaned?,Every 120 working hours.,p. 115
+41,Maintenance,How often should the closure gripper springs be checked?,"Every 1000 working hours, along with the wear state of the cap gripper ring.",p. 116
+42,Maintenance,How often should a full capping head overhaul be performed?,"Every 3000 working hours, with a more extensive overhaul (including magnetic rings and plug bushes) every 18000 hours.",p. 118-119
+43,Lubrication,What lubricant is recommended for VF130-VF150 and W110 reducers?,"Shell Tivela Oil S320, a synthetic oil with anti-foam and EP additives, or an equivalent.",p. 129
+44,Lubrication,Do VF30-VF49 and W63-W86 reducers require scheduled oil changes?,"No, they use permanent synthetic-oil lubrication and have no charge, discharge, or level plugs, so they need no oil maintenance.",p. 129
+45,Format Change,What must be done to the turret before changing container or cap format?,The turret must be lifted to its maximum height.,p. 131
+46,Capping Head,How is the capping head's tightening (closure) torque adjusted?,"Using the couple adjustment gripper on the magnets adjustment ring nut, aligning the graduated scale (in lb-in) with the reference mark for the desired torque value.",p. 155
+47,Capping Head,How do you verify whether the magnetic rings in the capping head need to be replaced?,"Measure the torque with a torquemeter; if it deviates more than ±10% from the set static torque value, the magnetic rings must be replaced.",p. 160
+48,Problems & Solutions,The machine won't start and the SAFETY DEVICES TRIPPED lamp is on. What's the likely cause and fix?,"An emergency stop was triggered or a hatch is open; release the EMERGENCY button or close the hatch, then press SAFETY RESET followed by START.",p. 214
+49,Problems & Solutions,Containers are being deformed or broken during the closure phase. What's a likely cause?,The capping head is positioned too low; raise it to the correct height for the container being handled.,p. 216
+50,Problems & Solutions,A cap is not completely screwed onto the bottle. What are two possible causes?,Insufficient magnetic clutch torque (increase the closure torque) or the cap sliding inside the closure gripper (check gripper wear and replace if needed).,p. 217
