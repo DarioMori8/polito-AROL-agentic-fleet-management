@@ -35,7 +35,7 @@ ollama pull nomic-embed-text
 >
 > Alternativa più leggera per il modello di chat:
 > ```bash
-> ollama pull llama3.1:8b
+> ollama pull llama3.1:8b (~5GB)
 > ```
 > (in tal caso ricordati di cambiare `OLLAMA_MODEL` nel `.env` al punto 6)
 
