@@ -2,23 +2,25 @@
 
 Backend service that exposes the chat API consumed by the frontend, and
 orchestrates calls to the specialized AI Agents (starting with the
-Manuals Agent) through an LLM-based orchestrator.
+Manuals Agent) through an LLM-based orchestrator built on **LangGraph**.
 
-This is **iteration 2**: the orchestrator now decides which agent(s) to
-call via LLM tool-calling (function calling), instead of the hardcoded
-routing of iteration 1. With a single agent (Manuals) registered, the
-practical effect is similar, but the routing decision is now made by an
-LLM reading tool descriptions — not by a fixed call in the endpoint.
-This is the foundation for adding more agents (IoT, Orders,
-Troubleshooting, ...) without touching the API layer.
-
+This is **iteration 3**: the orchestrator's reason -> act -> observe
+loop, previously implemented as a hand-written `for` loop (iteration 2),
+is now expressed as a compiled **LangGraph** `StateGraph`. The routing
+decision itself is unchanged (an LLM reading tool descriptions decides
+which agent(s) to call) — what changes is the engine that drives the
+loop, in exchange for built-in tool execution (`ToolNode`), a
+ready-made conditional-routing helper (`tools_condition`), and a
+foundation for checkpointing (session persistence, not yet wired) and
+tracing (Langfuse, not yet wired). 
 ```
 Frontend (simulated via Swagger UI)
     → Backend API (/v1/chat)
-    → Orchestrator (LLMOrchestrator)
-        → Orchestrator's own LLM (Ollama, tool-calling loop)
-        → Agent Registry (tool name → handler)
-            → ManualsClient → Manuals Agent (Ollama-based)
+    → Orchestrator (LangGraphOrchestrator)
+        → StateGraph: agent node (ChatOllama + bound tools)
+            --(tool_calls?)--> tools node (ToolNode)
+                → ManualsClient → Manuals Agent (Ollama-based)
+            <-- loops back to agent node until plain-text response
 ```
 
 ## Project structure
@@ -34,9 +36,8 @@ backend/
 │   ├── orchestrator/
 │   │   ├── __init__.py
 │   │   ├── base.py                # Orchestrator ABC (interface/implementation decoupling)
-│   │   ├── llm_adapter.py          # LLM adapter used for routing/tool-calling/composition
-│   │   ├── agent_registry.py       # Maps each tool the LLM can call to its handler function
-│   │   └── orchestrator.py         # LLMOrchestrator: the reason -> act -> observe loop
+│   │   ├── agent_registry.py       # LangChain @tool-decorated functions, one per agent
+│   │   └── orchestrator.py         # LangGraphOrchestrator: StateGraph-based reason/act/observe loop
 │   ├── clients/
 │   │   ├── base.py                # Abstract interface for agent clients
 │   │   ├── manuals_client.py      # HTTP client for the Manuals Agent
@@ -53,50 +54,51 @@ backend/
 
 ### `app/main.py`
 Creates the single FastAPI application instance, includes all routers,
-and configures logging (`logging.basicConfig`) — required for the
-`logger.info(...)` calls in the orchestrator to actually appear in the
-console; without it, Python's default handler suppresses anything
-below `WARNING`.
+and configures logging.
 
 ### `app/config.py`
-Centralizes all configuration using `pydantic-settings`. Now includes
-two separate sets of LLM settings: one for the Manuals Agent's own
-model (unchanged) and one for the orchestrator's routing model
-(`ORCHESTRATOR_*`). These are intentionally independent — the
-orchestrator's LLM does not have to be the same model/provider as any
-agent's, since its job (routing + composing) is lighter than an
-agent's own reasoning over its domain data.
+Centralizes all configuration using `pydantic-settings`. Two
+independent sets of LLM settings: one for the Manuals Agent's own model
+(unchanged) and one for the orchestrator's routing model
+(`ORCHESTRATOR_*`), including `ORCHESTRATOR_NUM_CTX` — the context
+window is now fixed explicitly rather than left to `ChatOllama`'s
+default, since a mismatch here can silently push VRAM usage past what's
+available and force CPU offload (5-30x slowdown). Verify actual GPU
+placement any time with `ollama ps` (`PROCESSOR` column should read
+`100% GPU`).
 
 ### `app/api/v1/chat.py`
 The HTTP-facing layer. Validates the incoming `ChatRequest`, delegates
-entirely to `LLMOrchestrator.handle(...)`, and returns its
+entirely to `LangGraphOrchestrator.handle(...)`, and returns its
 `ChatResponse`. Contains no business logic and no networking code —
 does not know which agents exist.
 
 ### `app/orchestrator/`
 - **`base.py`** — abstract `Orchestrator` interface (`handle(request) -> ChatResponse`).
   Kept as an ABC to decouple the API layer from the concrete
-  implementation, even though `LLMOrchestrator` is currently the only
-  one; documented as a deliberate architectural choice rather than a
-  requirement of the current implementation.
-- **`llm_adapter.py`** — adapter to the orchestrator's own LLM (Ollama).
-  Structurally mirrors `agents/core/llm_adapter.py` (same `ToolCall` /
-  `LLMResponse` shapes); flagged as temporary duplication, see "Known
-  limitations".
-- **`agent_registry.py`** — the single place that lists available
-  agents as LLM tool definitions (name, description, JSON-schema
-  parameters) and pairs each with a *handler*: an `async (dict) -> dict`
-  function that translates the LLM's generic arguments into the
-  specific, typed call on the concrete agent client (e.g.
-  `ManualsClient.search(query, machine_id)`), and normalizes the
-  client's typed response back into a plain dict. Adding a new agent
-  later means adding one entry here — nothing else changes.
-- **`orchestrator.py`** — `LLMOrchestrator`, implementing the
-  reason -> act -> observe loop: calls the LLM with the available
-  tools, executes any requested tool call via the registry, feeds the
-  result back, and repeats (bounded by `ORCHESTRATOR_MAX_ITERATIONS`)
-  until the LLM responds with plain text instead of a tool call. Logs
-  every step (`logger.info`) for observability during development.
+  implementation; documented as a deliberate architectural choice
+  rather than a requirement of the current implementation.
+- **`agent_registry.py`** — one `@tool`-decorated async function per
+  agent (currently `search_manuals`). LangChain inspects the function's
+  typed signature and docstring to generate the tool schema
+  automatically — no manual JSON schema or dict-argument translator
+  needed anymore (unlike iteration 2's `AgentTool`/`ToolHandler`). Each
+  tool uses `@tool(response_format="content_and_artifact")`, returning
+  a `(content, artifact)` tuple: `content` (string) is what the LLM
+  reads to reason/compose; `artifact` (a real dict) is what
+  `orchestrator.py` reads back to extract structured citations —
+  **this parameter is required**, a plain `@tool` silently breaks
+  citation extraction with no error. Adding a new agent means adding one `@tool`
+  function here — nothing else changes.
+- **`orchestrator.py`** — `LangGraphOrchestrator`, wrapping a compiled
+  `StateGraph`: an `agent` node (calls `ChatOllama`, bound to
+  `AGENT_TOOLS` once at module load, not per call) and a `tools` node
+  (`ToolNode`, executes whatever the LLM requested), connected by a
+  conditional edge (`tools_condition`) that loops back to `agent` until
+  the LLM responds with plain text. `recursion_limit` (passed to
+  `graph.ainvoke`) counts every node execution, not full reason/act
+  cycles — computed as `ORCHESTRATOR_MAX_ITERATIONS * 2 + 1`, an
+  approximation to re-tune with real testing.
 
 ### `app/clients/`
 One client class per agent, each implementing a shared abstract
@@ -123,10 +125,12 @@ backend/frontend-specific).
 ## Requirements
 
 - Python 3.12
-- Ollama running locally, with **two** models pulled:
-  - one for the Manuals Agent (see `agents/README.md`)
-  - one for the orchestrator's routing/tool-calling (see below) — must
-    support tool calling; `llama3.1:8b` and `gpt-oss:20b` both do
+- `langgraph`, `langchain-ollama` (see `requirements.txt`)
+- Ollama running locally, with model(s) pulled that support tool
+  calling `gpt-oss:20b`. Currently the same
+  model is used for both the orchestrator and the Manuals Agent — see
+  "Known limitations" regarding the VRAM/latency trade-offs of this
+  choice.
 - The Manuals Agent running and reachable
 
 ## Local setup
@@ -140,7 +144,7 @@ source venv/bin/activate        # Linux
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env if needed, in particular MANUALS_AGENT_URL and ORCHESTRATOR_OLLAMA_MODEL
+# edit .env if needed, in particular MANUALS_AGENT_URL, ORCHESTRATOR_OLLAMA_MODEL, ORCHESTRATOR_NUM_CTX
 ```
 
 ## Running locally
@@ -161,38 +165,66 @@ source venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
 
-Then open `http://localhost:8000/docs` and try `POST /v1/chat` with:
-```json
-{
-  "query": "perché la macchina non funziona?",
-  "machine_id": "2"
-}
+Test with curl:
+```bash
+curl -X POST http://localhost:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "perché la macchina non parte", "machine_id": "2"}'
 ```
 
-Watch Terminal 2's console: the orchestrator logs each step (LLM call,
-tool(s) requested, tool result, next iteration) so you can follow the
-routing decision in real time.
+or via `http://localhost:8000/docs`.
+
+To check GPU/VRAM placement while testing (useful for diagnosing
+slowdowns), run in a third terminal:
+```bash
+ollama ps
+```
+`PROCESSOR` should read `100% GPU`; anything showing a CPU split means
+the model has spilled out of VRAM.
+
+**Note on visibility**: the manual `logger.info(...)` step-by-step
+logging from iteration 2 was intentionally not carried over to the
+LangGraph version — Langfuse (not yet integrated, see "Known
+limitations") is meant to replace it properly. In the meantime, a
+temporary debug print of `result["messages"]` inside `handle()` is the
+quickest way to inspect a run's full message history.
 
 ## Environment variables (`.env`)
 
-| Variable                       | Description                                          | Example                  |
-|---------------------------------|-------------------------------------------------------|---------------------------|
-| `MANUALS_AGENT_URL`             | Base URL of the Manuals Agent service                 | `http://localhost:8001`  |
-| `ORCHESTRATOR_LLM_PROVIDER`     | LLM provider used by the orchestrator                  | `ollama`                  |
-| `ORCHESTRATOR_OLLAMA_BASE_URL`  | Base URL of the Ollama server for the orchestrator     | `http://localhost:11434` |
-| `ORCHESTRATOR_OLLAMA_MODEL`     | Model used for routing/tool-calling (must support it)  | `llama3.1:8b`             |
-| `ORCHESTRATOR_MAX_ITERATIONS`   | Max reason/act/observe iterations before giving up      | `5`                       |
+| Variable                       | Description                                            | Example                  |
+|---------------------------------|-----------------------------------------------------------|---------------------------|
+| `MANUALS_AGENT_URL`             | Base URL of the Manuals Agent service                     | `http://localhost:8001`  |
+| `ORCHESTRATOR_LLM_PROVIDER`     | LLM provider used by the orchestrator                     | `ollama`                  |
+| `ORCHESTRATOR_OLLAMA_BASE_URL`  | Base URL of the Ollama server for the orchestrator        | `http://localhost:11434` |
+| `ORCHESTRATOR_OLLAMA_MODEL`     | Model used for routing/tool-calling (must support it)     | `gpt-oss:20b`             |
+| `ORCHESTRATOR_NUM_CTX`          | Context window fixed explicitly (see `config.py` notes)   | `4096`                    |
+| `ORCHESTRATOR_MAX_ITERATIONS`   | Max reason/act/observe cycles before giving up             | `5`                       |
 
 ## Known limitations / next steps
 
-
-- **No persistence yet** — no database, no session/conversation memory.
-  `ChatRequest` has no `conversation_history` field yet. Planned for a
-  later iteration (Postgres for structured data, Redis for
-  session/cache).
-- **No authentication** on the `/v1/chat` endpoint yet.
+- **Langfuse not yet integrated** — no persistent, queryable trace of
+  requests; only the temporary manual `print` debugging described
+  above. This is the next planned step (see
+  `MIGRAZIONE_LANGGRAPH_TEORIA.md`, section 5).
+- **No checkpointing yet** — `StateGraph` supports persistence
+  (`SqliteSaver`/`PostgresSaver`) but it isn't wired in. `ChatRequest`
+  still has no `conversation_history` field. Planned as part of the
+  LangGraph migration's remaining work.
+- **Same model used for both the orchestrator and the Manuals Agent**
+  (`gpt-oss:20b`) — chosen for simplicity/VRAM-safety on 16GB hardware
+  (no model-swapping), at the cost of using a heavier-than-necessary
+  model for the lightweight routing task. Not yet benchmarked against a
+  smaller dedicated orchestrator model on equal footing (same test,
+  same model choice as the pre-migration baseline) to isolate whether
+  perceived slowdowns come from the model choice or the framework
+  itself.
 - **No automated evaluation of routing quality** — nothing currently
   measures whether the LLM's decision to stop (or keep calling tools)
   was actually correct; relies entirely on the system prompt and the
   model's own judgment. A `confidence`-based check or a separate judge
   step are possible future additions.
+- **No authentication** on the `/v1/chat` endpoint yet.
+- **Single agent registered** (`search_manuals`). Real multi-agent
+  routing (IoT, Orders, Troubleshooting) is the next milestone — each
+  new agent needs one client in `app/clients/` and one `@tool` function
+  in `agent_registry.py`, nothing else.

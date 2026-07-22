@@ -11,4 +11,6 @@ class Settings(BaseSettings):
     ORCHESTRATOR_OLLAMA_MODEL: str
     ORCHESTRATOR_MAX_ITERATIONS: int = 5
 
+    ORCHESTRATOR_NUM_CTX: int = 4096
+
 settings = Settings()
