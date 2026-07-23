@@ -1,0 +1,159 @@
+# Langfuse (self-hosted) — Setup Guide
+
+This guide covers the local installation of Langfuse via Docker Compose,
+`.env` configuration, project creation, and wiring the API keys into the
+backend (`app/orchestrator/orchestrator.py`, where Langfuse's
+`CallbackHandler` is already attached to `graph.ainvoke(...)`).
+
+Langfuse lives in a **separate** folder from the backend repo (it's
+infrastructure, not application code — same category as Ollama).
+
+```
+langfuse-local/          ← this folder, NOT inside the backend/agents repo
+├── docker-compose.yml
+└── .env
+```
+
+## Prerequisites
+
+- Docker and Docker Compose installed and working
+  (`docker --version` and `docker compose version` should both respond)
+- Port `3000` free on the machine (Langfuse UI/API)
+
+## 1. docker-compose.yml
+
+This file defines 6 services (`langfuse-web`, `langfuse-worker`,
+`postgres`, `clickhouse`, `redis`, `minio`) — see the "Architecture"
+section below for what each one does.
+
+## 2. Generate the required secrets
+
+Before creating the `.env`, generate the three cryptographic secrets
+Langfuse uses for internal authentication/encryption:
+
+```bash
+openssl rand -base64 32   # → for NEXTAUTH_SECRET
+openssl rand -base64 16   # → for SALT
+openssl rand -hex 32      # → for ENCRYPTION_KEY
+```
+
+Run each command and copy the output — you'll need them in the next step.
+
+## 3. Create the `.env`
+
+In the same folder (`langfuse-local/`), create a `.env` file with this
+structure. **Every value marked `<...>` must be generated/replaced by
+you** — the ones below are placeholders, don't use them as-is:
+
+```dotenv
+# ---------- Langfuse core ----------
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=<output of: openssl rand -base64 32>
+SALT=<output of: openssl rand -base64 16>
+ENCRYPTION_KEY=<output of: openssl rand -hex 32>
+
+# ---------- Postgres ----------
+POSTGRES_USER=langfuse
+POSTGRES_PASSWORD=<pick a strong password>
+POSTGRES_DB=langfuse
+DATABASE_URL=postgresql://langfuse:<same password as above>@postgres:5432/langfuse
+
+# ---------- ClickHouse ----------
+CLICKHOUSE_PASSWORD=<pick a strong password>
+
+# ---------- MinIO ----------
+MINIO_ROOT_USER=langfuse
+MINIO_ROOT_PASSWORD=<pick a strong password>
+
+LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=langfuse
+LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=<same password as MINIO_ROOT_PASSWORD>
+LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID=langfuse
+LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY=<same password as MINIO_ROOT_PASSWORD>
+```
+
+Practical notes on this file:
+- `DATABASE_URL` must use **the same password** set in
+  `POSTGRES_PASSWORD` right above — they're the same database, two
+  different variables that must be kept in sync manually.
+- The two pairs `LANGFUSE_S3_*_ACCESS_KEY_ID` / `..._SECRET_ACCESS_KEY`
+  must match `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` — these are the
+  credentials Langfuse (web + worker) uses to authenticate against
+  MinIO, which internally treats them as if it were a real S3 account.
+- Use different passwords across Postgres/ClickHouse/MinIO — don't
+  reuse the same password for every service.
+
+**This `.env` contains real secrets once filled in — never commit it to
+a Git repository.**
+
+## 4. Start the containers
+
+```bash
+docker compose up -d
+```
+
+Follow the logs to see when it's ready:
+
+```bash
+docker compose logs -f langfuse-web
+```
+
+## 5. Create an account and a project
+
+1. Open `http://localhost:3000` in the browser
+2. Create an account (everything is local, no data leaves your machine)
+3. Create an organization, then a project inside it (e.g.
+   `AROL Customer Platform`)
+4. In the project settings (**Settings → API Keys**), generate a key
+   pair: you'll get a `Public Key` (`pk-lf-...`) and a `Secret Key`
+   (`sk-lf-...`)
+
+## 6. Wire the keys into the backend
+
+These keys go into the **backend's `.env`**:
+
+```dotenv
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=http://localhost:3000
+```
+
+`app/config.py` reads these three variables and explicitly exports them
+into `os.environ` (necessary because Langfuse's `CallbackHandler()`
+reads them from there, not from pydantic's `settings` object — see the
+comments in `config.py` for the exact reason).
+
+
+## 7. End-to-end verification
+
+Restart the backend, then fire a test request:
+
+```bash
+curl -X POST http://localhost:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "perché la macchina non parte", "machine_id": "2"}'
+```
+
+Open `http://localhost:3000` again → a new trace should appear (with a
+few seconds of delay, since ingestion is asynchronous). If nothing
+shows up, check these first:
+- Are the three `LANGFUSE_*` variables actually in the backend's `.env`?
+- Was the backend restarted after adding them?
+- Does `docker compose ps` (inside `langfuse-local/`) show all 6
+  services as `healthy`?
+
+## Architecture — what each of the 6 containers does
+
+| Service | Role |
+|---|---|
+| `langfuse-web` | UI + public API — the endpoint the backend sends traces to |
+| `langfuse-worker` | Consumes the queue and durably writes traces to ClickHouse |
+| `postgres` | "Management" data: users, projects, API keys |
+| `clickhouse` | Analytical data: the actual traces, optimized for aggregate queries |
+| `redis` | Work queue between web and worker, plus caching |
+| `minio` | S3-compatible storage for large attachments/exports |
+
+The path of a trace: the backend's `CallbackHandler` → `langfuse-web`
+(validates) → `redis` (queue) → `langfuse-worker` (picks it up) →
+`clickhouse` (durable write). This decoupling is why sending traces
+doesn't slow down your `/v1/chat` responses.
+

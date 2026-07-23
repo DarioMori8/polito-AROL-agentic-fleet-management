@@ -2,6 +2,7 @@
 from typing import Annotated, TypedDict
  
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langfuse.langchain import CallbackHandler
 from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -60,6 +61,10 @@ def _build_llm()->ChatOllama:
 
 
 _llm_with_tools = _build_llm()
+
+
+_langfuse_handler = CallbackHandler()
+
 
 async def _agent_node(state: OrchestratorState) -> dict:
     """
@@ -131,7 +136,10 @@ class LangGraphOrchestrator(Orchestrator):
         #recursion_limit count each node execution, I decided to multiply for two because Orchestrator_max_iterations refers to agent+tools
         result = await graph.ainvoke(
             initial_state,
-            config={"recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1},
+            config={
+                "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1,
+                "callbacks": [_langfuse_handler],
+            },
         )
 
         final_message= result["messages"][-1]
