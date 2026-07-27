@@ -1,14 +1,14 @@
 
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, AsyncIterator
+import uuid
  
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langfuse.langchain import CallbackHandler
 from langchain_ollama import ChatOllama
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from app.clients.exceptions import AgentUnavailableError
 from app.config import settings
 from app.models.chat import ChatRequest, ChatResponse
 from app.orchestrator.agent_registry import AGENT_TOOLS
@@ -56,7 +56,7 @@ def _build_llm()->ChatOllama:
         model=settings.ORCHESTRATOR_OLLAMA_MODEL,
         base_url= settings.ORCHESTRATOR_OLLAMA_BASE_URL,
         num_ctx=settings.ORCHESTRATOR_NUM_CTX,
-
+        reasoning=True,
     ).bind_tools(AGENT_TOOLS)
 
 
@@ -150,6 +150,91 @@ class LangGraphOrchestrator(Orchestrator):
             citations=citations,
             session_id="temp-session-id",  
         )
+
+    async def handle_stream(self, request: ChatRequest)-> AsyncIterator[dict]:
+        """
+            Streaming variant of handle(). Instead of returning a single
+            ChatResponse, it yields a sequence of semantic events (dicts) as the
+            graph executes: start / thinking / token / status / error / citations
+            / done. The endpoint layer is responsible for serializing these into
+            the SSE wire format — this method stays transport-agnostic.
+        """
+        session_id =str(uuid.uuid4())
+        user_content= f"[machine_id: {request.machine_id}]\n{request.query}"
+
+        initial_state: OrchestratorState ={
+                "messages": [
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(content=user_content),
+                ]
+
+        }
+        # Sent first so the frontend has the session id from the very start.
+        # This is also the future thread_id once checkpointing is wired.
+        yield {"type": "start", "session_id": session_id}
+
+        citations: list[dict]= []
+
+        try:
+            async for stream_mode, payload in graph.astream(
+                initial_state, 
+                config={
+                    "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS*2+1,
+                    "callback": [_langfuse_handler],
+                },
+                stream_mode=["messages", "updates"],
+            ):
+                # --- token / thinking: LLM output, only from the "agent" node ---
+                if stream_mode == "messages":
+                    chunk, metadata = payload
+                    if metadata.get("langgraph_node") != "agent":
+                        continue
+
+                    reasoning= chunk.additional_kwargs.get("reasoning_content") #additional_kwarg is a dict and get is necessery to avoid KeyError
+                    if(reasoning):
+                        yield {"type": "thinking", "text": reasoning}
+
+                    if (chunk.content):
+                        yield {"type": "token", "text": chunk.content}
+
+                # --- status / citations / recoverable errors: node completions ---
+                elif stream_mode == "updates":
+                    for _node_name, node_update in payload.items():
+                        if not isinstance(node_update, dict):
+                            continue
+                        for msg in node_update.get("messages", []):
+                        # The agent decided to call a tool -> announce it,
+                        # so the silent HTTP call to the agent isn't a freeze.
+                            for tc in getattr(msg, "tool_calls", None) or  []:
+                                yield {
+                                    "type": "status",
+                                    "tool": tc["name"],
+                                    "message": f"Consulting {tc['name']}...",
+                                }
+                             # A tool finished -> read its structured artifact.
+                        if isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict):
+                            if "error" in msg.artifact:
+                                yield {
+                                    "type": "error",
+                                    "recoverable": True,
+                                    "message": msg.artifact["error"],
+                                }
+                            for c in msg.artifact.get("citations", []):
+                                citations.append(c)
+
+            yield {"type": "citations", "citations": citations}
+            yield {"type": "done", "session_id": session_id}
+
+        except Exception as exc:
+            # Once streaming has begun we're already committed to HTTP 200,
+            # so a fatal failure can't become a 500 — it becomes an event.
+            yield {"type": "error", "recoverable": False, "message": str(exc)}
+            yield {"type": "done", "session_id": session_id}
+
+    
+
+
+
 
     def _extract_citations(self, messages: list[BaseMessage]) -> list[dict]:
         """

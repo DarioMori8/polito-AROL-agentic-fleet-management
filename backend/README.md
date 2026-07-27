@@ -11,11 +11,14 @@ decision itself is unchanged (an LLM reading tool descriptions decides
 which agent(s) to call) — what changes is the engine that drives the
 loop, in exchange for built-in tool execution (`ToolNode`), a
 ready-made conditional-routing helper (`tools_condition`), and a
-foundation for checkpointing (session persistence, not yet wired) and
-tracing (Langfuse, not yet wired). 
+foundation for checkpointing (session persistence, not yet wired). On
+top of this iteration, two capabilities are now wired in: **Langfuse
+tracing** (via a module-level `CallbackHandler` passed to the graph)
+and **token-by-token streaming** of the answer over Server-Sent Events
+(see the API section).
 ```
-Frontend (simulated via Swagger UI)
-    → Backend API (/v1/chat)
+Frontend (simulated via Swagger UI / curl -N)
+    → Backend API (/v1/chat  or  /v1/chat/stream)
     → Orchestrator (LangGraphOrchestrator)
         → StateGraph: agent node (ChatOllama + bound tools)
             --(tool_calls?)--> tools node (ToolNode)
@@ -32,7 +35,7 @@ backend/
 │   ├── config.py                  # Settings loaded from .env (Pydantic Settings)
 │   ├── api/
 │   │   └── v1/
-│   │       └── chat.py            # POST /v1/chat — delegates entirely to the orchestrator
+│   │       └── chat.py            # POST /v1/chat and POST /v1/chat/stream — delegate to the orchestrator
 │   ├── orchestrator/
 │   │   ├── __init__.py
 │   │   ├── base.py                # Orchestrator ABC (interface/implementation decoupling)
@@ -45,7 +48,7 @@ backend/
 │   └── models/
 │       └── chat.py                # ChatRequest / ChatResponse (endpoint contract)
 ├── requirements.txt
-├── .env.example
+├── .env
 ├── .dockerignore
 └── Dockerfile
 ```
@@ -65,13 +68,19 @@ window is now fixed explicitly rather than left to `ChatOllama`'s
 default, since a mismatch here can silently push VRAM usage past what's
 available and force CPU offload (5-30x slowdown). Verify actual GPU
 placement any time with `ollama ps` (`PROCESSOR` column should read
-`100% GPU`).
+`100% GPU`). Also bridges the Langfuse credentials into `os.environ`
+after building `settings`, because Langfuse's `CallbackHandler` reads
+them directly from the process environment, not from the pydantic
+`settings` object.
 
 ### `app/api/v1/chat.py`
-The HTTP-facing layer. Validates the incoming `ChatRequest`, delegates
-entirely to `LangGraphOrchestrator.handle(...)`, and returns its
-`ChatResponse`. Contains no business logic and no networking code —
-does not know which agents exist.
+The HTTP-facing layer. Validates the incoming `ChatRequest` and
+delegates entirely to the orchestrator — `handle(...)` for the
+non-streaming endpoint, `handle_stream(...)` for the streaming one. It
+serializes the orchestrator's semantic events into the SSE wire format
+(`event:`/`data:` frames), but contains no business logic and no
+networking code towards the agents, and does not know which agents
+exist.
 
 ### `app/orchestrator/`
 - **`base.py`** — abstract `Orchestrator` interface (`handle(request) -> ChatResponse`).
@@ -95,10 +104,16 @@ does not know which agents exist.
   `AGENT_TOOLS` once at module load, not per call) and a `tools` node
   (`ToolNode`, executes whatever the LLM requested), connected by a
   conditional edge (`tools_condition`) that loops back to `agent` until
-  the LLM responds with plain text. `recursion_limit` (passed to
-  `graph.ainvoke`) counts every node execution, not full reason/act
-  cycles — computed as `ORCHESTRATOR_MAX_ITERATIONS * 2 + 1`, an
-  approximation to re-tune with real testing.
+  the LLM responds with plain text. Exposes two entry points:
+  `handle()` runs the graph to completion with `graph.ainvoke(...)` and
+  returns a single `ChatResponse`; `handle_stream()` runs the same
+  graph with `graph.astream(stream_mode=["messages", "updates"])` and
+  yields a sequence of semantic events (start / thinking / status /
+  token / error / citations / done) as execution proceeds.
+  `recursion_limit` (passed to the graph) counts every node execution,
+  not full reason/act cycles — computed as
+  `ORCHESTRATOR_MAX_ITERATIONS * 2 + 1`, an approximation to re-tune
+  with real testing.
 
 ### `app/clients/`
 One client class per agent, each implementing a shared abstract
@@ -122,16 +137,109 @@ defines `ChatRequest`/`ChatResponse`, the contract for the `/v1/chat`
 endpoint itself (not shared with the agents project, since it's
 backend/frontend-specific).
 
+## API
+
+The backend exposes three endpoints: a health check, a non-streaming
+chat endpoint, and a streaming chat endpoint. The two chat endpoints
+accept the **same** request body and delegate entirely to the
+orchestrator; they differ only in how the answer is delivered — one JSON
+block versus token-by-token. In both cases a single HTTP request carries
+the user's question in and brings the assistant's answer back out; there
+is no separate endpoint to "fetch" the reply afterwards.
+
+### `GET /`
+
+Health check. Takes no input.
+
+**Returns**: `{"status": "ok"}`. Used to confirm the service is up.
+
+### `POST /v1/chat`
+
+Non-streaming chat. Receives the user's question, runs the full
+orchestrator graph to completion (`graph.ainvoke`), and returns the
+assembled answer as a single JSON object. This is the endpoint to use
+from Swagger UI, automated tests, or any client that does not consume
+SSE.
+
+**Receives** — `ChatRequest`:
+
+| Field        | Type  | Description |
+|--------------|-------|-------------|
+| `query`      | `str` | The user's question in natural language. |
+| `machine_id` | `str` | Identifier of the machine the question refers to. Injected into the tool call, not treated as part of the question to interpret. |
+
+```json
+{ "query": "perché la macchina non parte", "machine_id": "2" }
+```
+
+**Returns** — `ChatResponse`:
+
+| Field        | Type              | Description |
+|--------------|-------------------|-------------|
+| `answer`     | `str`             | Final assistant response, composed by the orchestrator strictly from the tool results. |
+| `citations`  | `list[Citation]`  | Structured references extracted from the tool artifacts; each `Citation` has `doc`, `page`, `snippet`. Empty list if none. |
+| `session_id` | `str`             | Conversation identifier. Currently a placeholder (`"temp-session-id"`) until checkpointing is wired; will become the persistent `thread_id`. |
+
+```json
+{
+  "answer": "...",
+  "citations": [{ "doc": "manual_1.pdf", "page": 12, "snippet": "..." }],
+  "session_id": "temp-session-id"
+}
+```
+
+### `POST /v1/chat/stream`
+
+Streaming chat over **Server-Sent Events (SSE)**. Receives the same
+`ChatRequest`, but instead of returning one JSON object it keeps the HTTP
+response open and streams a sequence of typed events as the graph
+executes (`graph.astream`), so the frontend can render the answer as it
+forms. The question travels in the request body; the whole answer
+streams back on the same connection.
+
+**Receives**: identical to `POST /v1/chat` (`query`, `machine_id`).
+
+**Returns**: `Content-Type: text/event-stream`. Each event is one SSE
+frame of the form `event: <type>\ndata: <json>\n\n`, where the `data`
+payload is a JSON object whose `type` field matches the event name.
+
+Event sequence for a typical turn:
+
+| Event       | When | `data` payload |
+|-------------|------|----------------|
+| `start`     | Once, before the graph runs | `{ "type": "start", "session_id": "<uuid>" }` — a freshly generated id, sent first so the frontend has it from the first byte. |
+| `thinking`  | While the routing LLM reasons (model-dependent) | `{ "type": "thinking", "text": "<chunk>" }` — reasoning tokens, delivered on a channel separate from the answer, meant to be shown collapsed/greyed. |
+| `status`    | When the LLM decides to call an agent | `{ "type": "status", "tool": "search_manuals", "message": "Consulting search_manuals..." }` — fills the silent gap of the HTTP call to the agent. |
+| `token`     | While the final answer is generated | `{ "type": "token", "text": "<chunk>" }` — one content chunk; concatenating all `token` events rebuilds the full answer. |
+| `error`     | On a recoverable agent failure, or a fatal graph error | `{ "type": "error", "recoverable": true\|false, "message": "..." }` — once streaming has begun the status is already `200 OK`, so failures are delivered as events, not as HTTP error codes. |
+| `citations` | Once, after the graph ends | `{ "type": "citations", "citations": [ ... ] }` — structured references accumulated from the tool artifacts, delivered separately from the token stream. |
+| `done`      | Once, last | `{ "type": "done", "session_id": "<uuid>" }` — marks the end of the turn; the connection then closes. |
+
+Consume it with `curl -N` (Swagger UI buffers the stream and only shows
+it at the end, which defeats the purpose):
+
+```bash
+curl -N -X POST http://localhost:8000/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "perché la macchina non parte", "machine_id": "2"}'
+```
+
+**Frontend note**: the browser's native `EventSource` only supports
+`GET`. Since this endpoint is a `POST` (the question travels in the
+body), the frontend must read the stream with `fetch` + `ReadableStream`
+and parse the `event:`/`data:` frames manually, rather than using
+`EventSource`.
+
 ## Requirements
 
 - Python 3.12
-- `langgraph`, `langchain-ollama` (see `requirements.txt`)
+- `langgraph`, `langchain-ollama`, `langfuse` (see `requirements.txt`)
 - Ollama running locally, with model(s) pulled that support tool
   calling `gpt-oss:20b`. Currently the same
-  model is used for both the orchestrator and the Manuals Agent — see
-  "Known limitations" regarding the VRAM/latency trade-offs of this
-  choice.
+  model is used for both the orchestrator and the Manuals Agent
 - The Manuals Agent running and reachable
+- A reachable Langfuse instance (self-hosted via Docker Compose) for
+  tracing; credentials provided via `.env` (see environment variables)
 
 ## Local setup
 
@@ -144,7 +252,8 @@ source venv/bin/activate        # Linux
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env if needed, in particular MANUALS_AGENT_URL, ORCHESTRATOR_OLLAMA_MODEL, ORCHESTRATOR_NUM_CTX
+# edit .env if needed, in particular MANUALS_AGENT_URL, ORCHESTRATOR_OLLAMA_MODEL,
+# ORCHESTRATOR_NUM_CTX, and the LANGFUSE_* credentials
 ```
 
 ## Running locally
@@ -164,8 +273,13 @@ cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
+**Terminal 3 - LangFuse**
+```bash
+follow the instruction "../langfuse-local/README"
+```
 
-Test with curl:
+
+Test the non-streaming endpoint with curl:
 ```bash
 curl -X POST http://localhost:8000/v1/chat \
   -H "Content-Type: application/json" \
@@ -174,20 +288,20 @@ curl -X POST http://localhost:8000/v1/chat \
 
 or via `http://localhost:8000/docs`.
 
-To check GPU/VRAM placement while testing (useful for diagnosing
-slowdowns), run in a third terminal:
+Test the streaming endpoint with `curl -N` (do **not** use Swagger for
+this one — it buffers the stream):
 ```bash
-ollama ps
+curl -N -X POST http://localhost:8000/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "perché la macchina non parte", "machine_id": "2"}'
 ```
-`PROCESSOR` should read `100% GPU`; anything showing a CPU split means
-the model has spilled out of VRAM.
+
 
 **Note on visibility**: the manual `logger.info(...)` step-by-step
 logging from iteration 2 was intentionally not carried over to the
-LangGraph version — Langfuse (not yet integrated, see "Known
-limitations") is meant to replace it properly. In the meantime, a
-temporary debug print of `result["messages"]` inside `handle()` is the
-quickest way to inspect a run's full message history.
+LangGraph version — Langfuse now replaces it, providing a persistent,
+navigable trace of each run. For quick ad-hoc inspection, a temporary
+debug print inside `handle()` / `handle_stream()` still works.
 
 ## Environment variables (`.env`)
 
@@ -199,17 +313,19 @@ quickest way to inspect a run's full message history.
 | `ORCHESTRATOR_OLLAMA_MODEL`     | Model used for routing/tool-calling (must support it)     | `gpt-oss:20b`             |
 | `ORCHESTRATOR_NUM_CTX`          | Context window fixed explicitly (see `config.py` notes)   | `4096`                    |
 | `ORCHESTRATOR_MAX_ITERATIONS`   | Max reason/act/observe cycles before giving up             | `5`                       |
+| `LANGFUSE_PUBLIC_KEY`           | Langfuse public key (bridged into `os.environ`)           | `pk-lf-...`               |
+| `LANGFUSE_SECRET_KEY`           | Langfuse secret key (bridged into `os.environ`)           | `sk-lf-...`               |
+| `LANGFUSE_HOST`                 | Base URL of the self-hosted Langfuse instance             | `http://localhost:3000`  |
 
 ## Known limitations / next steps
 
-- **Langfuse not yet integrated** — no persistent, queryable trace of
-  requests; only the temporary manual `print` debugging described
-  above. This is the next planned step (see
-  `MIGRAZIONE_LANGGRAPH_TEORIA.md`, section 5).
 - **No checkpointing yet** — `StateGraph` supports persistence
   (`SqliteSaver`/`PostgresSaver`) but it isn't wired in. `ChatRequest`
-  still has no `conversation_history` field. Planned as part of the
-  LangGraph migration's remaining work.
+  still has no `conversation_history` field, and `session_id` is either
+  a placeholder (non-streaming) or a per-request UUID that is generated
+  and discarded (streaming). Wiring a checkpointer would turn that id
+  into a persistent `thread_id`, making each turn part of an ongoing
+  conversation. Planned as the next milestone.
 - **Same model used for both the orchestrator and the Manuals Agent**
   (`gpt-oss:20b`) — chosen for simplicity/VRAM-safety on 16GB hardware
   (no model-swapping), at the cost of using a heavier-than-necessary
@@ -223,7 +339,8 @@ quickest way to inspect a run's full message history.
   was actually correct; relies entirely on the system prompt and the
   model's own judgment. A `confidence`-based check or a separate judge
   step are possible future additions.
-- **No authentication** on the `/v1/chat` endpoint yet.
+- **No authentication** on the `/v1/chat` and `/v1/chat/stream`
+  endpoints yet.
 - **Single agent registered** (`search_manuals`). Real multi-agent
   routing (IoT, Orders, Troubleshooting) is the next milestone — each
   new agent needs one client in `app/clients/` and one `@tool` function
