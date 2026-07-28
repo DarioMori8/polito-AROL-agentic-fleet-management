@@ -161,6 +161,26 @@ assembled answer as a single JSON object. This is the endpoint to use
 from Swagger UI, automated tests, or any client that does not consume
 SSE.
 
+### `GET /v1/machines`
+
+Fleet list. Takes no input. Returns every machine in the customer's
+park.
+
+**Returns**: a JSON array of machine objects, each with `id`, `name`,
+`model`, `serial_number`, `type` (`capping` / `filling` / `inspection`)
+and `status` (`online` / `offline` / `maintenance`). An empty array is a
+valid response (no machines catalogued).
+
+### `GET /v1/machines/{machine_id}`
+
+Machine detail — the landing target of the QR-scan use case. Receives a
+machine id in the path and returns that single machine's record.
+
+**Returns**: one machine object (same fields as above). Responds `404`
+if no machine with that id exists. The id space is shared with the chat
+endpoint's `machine_id`, so the same identifier addresses a machine
+everywhere in the system.
+
 **Receives** — `ChatRequest`:
 
 | Field        | Type  | Description |
