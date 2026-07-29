@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     MAX_ITERATIONS: int = 5
     CHROMA_PATH: str = "./data/chroma"
+    DOCS_SERVICE_URL: str = "http://localhost:8003"
 
 
 settings = Settings()

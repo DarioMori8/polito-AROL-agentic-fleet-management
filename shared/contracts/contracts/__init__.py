@@ -1,3 +1,33 @@
-from contracts.manuals import SearchManualTask, SearchManualResponse, Citation
+from contracts.manuals import (
+    SearchManualTask,
+    SearchManualResponse,
+    Citation,
+    SearchDocsTask,
+    SearchDocsResponse,
+    Document,
+    Item,
+    Order,
+    Revision,
+    Quote,
+    DocumentSource,
+    OrderSource,
+    QuoteSource,
+    Source,
+)
 
-__all__ = ["SearchManualTask", "SearchManualResponse", "Citation"]
+__all__ = [
+    "SearchManualTask",
+    "SearchManualResponse",
+    "Citation",
+    "SearchDocsTask",
+    "SearchDocsResponse",
+    "Document",
+    "Item",
+    "Order",
+    "Revision",
+    "Quote",
+    "DocumentSource",
+    "OrderSource",
+    "QuoteSource",
+    "Source",
+]

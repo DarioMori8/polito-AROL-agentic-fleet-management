@@ -1,5 +1,14 @@
 # Agents
 
+Questo servizio contiene **due agenti**, entrambi esposti come endpoint HTTP:
+
+| Agente | Endpoint | A cosa risponde | Fonte dati |
+|---|---|---|---|
+| **Manuals Agent** | `POST /agents/manuals/search` | Domande sul manuale tecnico della macchina | PDF indicizzati in Chroma (locale) |
+| **Docs Agent** | `POST /agents/docs/search` | Domande su preventivi, ordini e documenti contrattuali | servizio `mock-backoffice` via HTTP |
+
+I due agenti hanno prerequisiti diversi: il Manuals Agent ha bisogno dell'ingestion del PDF (step 7), il Docs Agent ha bisogno del servizio `mock-backoffice` acceso (step 8). Se ti interessa provarne uno solo, puoi saltare lo step dell'altro.
+
 ## Prerequisiti
 
 - Git installato
@@ -53,10 +62,9 @@ curl http://localhost:11434/api/tags
 
 Deve elencare sia `gpt-oss:20b` che `nomic-embed-text`.
 
-## 4. Clonare la repo ed entra in agents
+## 4. Entra in agents
 
 ```bash
-git clone <URL-del-repo>
 cd polito-AROL-agentic-fleet-management/agents
 ```
 
@@ -96,11 +104,12 @@ EMBEDDING_MODEL=nomic-embed-text
 
 MAX_ITERATIONS=5
 CHROMA_PATH=./data/chroma
+DOCS_SERVICE_URL=http://localhost:8003
 ```
 
-Se hai scaricato un modello di chat diverso al punto 2, aggiorna `OLLAMA_MODEL` di conseguenza. `EMBEDDING_MODEL` e `CHROMA_PATH` puoi lasciarli come sono.
+Se hai scaricato un modello di chat diverso al punto 2, aggiorna `OLLAMA_MODEL` di conseguenza. Gli altri valori puoi lasciarli come sono.
 
-## 7. Popolare il database vettoriale (una tantum)
+## 7. Popolare il database vettoriale (una tantum, serve solo al Manuals Agent)
 
 Il Manuals Agent risponde cercando nel manuale tramite un database vettoriale (Chroma), non leggendo il PDF al volo. Prima del primo utilizzo va quindi fatta una volta l'**ingestion**: si legge il PDF di esempio già incluso in `manuals_agent/samples_manual/`, lo si spezza in porzioni di testo (chunk), si calcola un embedding per ciascuna con `nomic-embed-text`, e si salva tutto in `data/chroma/` (cartella creata automaticamente, non tracciata da git).
 
@@ -122,7 +131,33 @@ Already seeded collection.
 
 > Se in futuro aggiungi altri PDF, mettili nella stessa cartella `manuals_agent/samples_manual/` e rilancia lo script — verranno ingeriti solo se il database è ancora vuoto (per forzare un re-ingestion completo, cancella la cartella `data/chroma/` e rilancia).
 
-## 8. Avviare il server
+## 8. Avviare il mock-backoffice (serve solo al Docs Agent)
+
+Il Docs Agent non legge file locali: interroga via HTTP il servizio `mock-backoffice`, che sta al posto dell'ERP/CRM reale di AROL (preventivi, ordini, documenti contrattuali). Va avviato **in un terminale separato**, e ha un suo venv indipendente da quello di `agents`.
+
+```bash
+cd ../mock-backoffice
+python3.12 -m venv .venv
+```
+
+Attiva il venv (`.venv\Scripts\Activate.ps1` su Windows, `source .venv/bin/activate` su Linux), poi:
+
+```bash
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8003
+```
+
+Verifica in un altro terminale che risponda:
+
+```bash
+curl http://localhost:8003/health
+```
+
+Deve restituire `{"status":"ok"}`. **Lascia questo terminale aperto.**
+
+## 9. Avviare il server degli agenti
+
+Torna nel terminale di `agents` (con il suo venv attivo):
 
 ```bash
 uvicorn main:app --reload --port 8001
@@ -137,7 +172,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8001
 
 Se la porta è già occupata, usa `--port 8002` (e aggiorna gli URL sotto di conseguenza).
 
-## 9. Testare un prompt reale
+## 10. Testare il Manuals Agent
 
 1. Apri il browser su `http://localhost:8001/docs`
 2. Clicca su **`POST /agents/manuals/search`** per espanderlo
@@ -165,6 +200,68 @@ Se la porta è già occupata, usa `--port 8002` (e aggiorna gli URL sotto di con
 
 Se la risposta contiene `citations` con pagine valide del manuale (es. `"page": 120`), il flusso end-to-end funziona correttamente.
 
+## 11. Testare il Docs Agent
+
+Stessa procedura, ma su **`POST /agents/docs/search`**. Anche qui `machine_id` deve essere `"generic"`: i dati mock sono tutti riferiti all'unica macchina di esempio (una A3279 venduta a "BevPack S.p.A.").
+
+L'agente ha tre tool e **sceglie da solo quale usare** in base alla domanda, quindi le quattro domande qui sotto esercitano percorsi diversi. Provale in ordine:
+
+**a) Documenti contrattuali**
+
+```json
+{
+  "query": "How long is the warranty on my machine?",
+  "machine_id": "generic"
+}
+```
+
+Risposta attesa: 24 mesi sulle parti meccaniche, 12 sui componenti elettronici, con in `sources` il contratto `DOC-2026-001`.
+
+**b) Ordini**
+
+```json
+{
+  "query": "Which of my spare parts orders have been shipped but not delivered yet?",
+  "machine_id": "generic"
+}
+```
+
+Risposta attesa: solo `ORD-2026-002`.
+
+**c) Preventivi e storico revisioni**
+
+```json
+{
+  "query": "Why did the price of quote Q-2026-001 change during the negotiation?",
+  "machine_id": "generic"
+}
+```
+
+Risposta attesa: le 3 revisioni del preventivo (135.000 → 130.200 → 128.500 EUR) con le relative motivazioni.
+
+**d) Domanda che incrocia due fonti** — è il test più interessante, perché costringe l'agente a chiamare **due tool diversi** e a combinarne i risultati:
+
+```json
+{
+  "query": "For order ORD-2026-001, what did I buy and what are the payment terms in its contract?",
+  "machine_id": "generic"
+}
+```
+
+Risposta attesa: la lista degli articoli ordinati **e** i termini di pagamento (30% / 40% / 30%), con in `sources` sia un elemento `"kind": "order"` sia uno `"kind": "document"`.
+
+### Come leggere la risposta
+
+```json
+{
+  "answer": "testo della risposta",
+  "sources": [ { "kind": "document | order | quote", "...": "..." } ],
+  "confidence": 1.0
+}
+```
+
+Il campo `kind` dice da quale fonte arriva ogni elemento, così il frontend può renderizzare un ordine come tabella e un documento come citazione. Se `sources` è vuoto e `confidence` è `0.0`, l'agente non ha trovato nulla e te lo dice onestamente invece di inventare (comportamento voluto).
+
 ## Troubleshooting
 
 | Problema | Causa probabile |
@@ -173,6 +270,9 @@ Se la risposta contiene `citations` con pagine valide del manuale (es. `"page": 
 | Timeout / risposta molto lenta | Modello troppo pesante per la GPU/VRAM disponibile — prova `llama3.1:8b` |
 | `Connection refused` su `localhost:11434` | Ollama non è avviato — su Linux: `ollama serve` in un altro terminale |
 | `ValueError: The ollama python package is not installed` | Manca la dipendenza `ollama` (diversa da `ollama` CLI) — `pip install -r requirements.txt` |
-| 422 su `/agents/manuals/search` | Il body non è JSON valido — controlla di usare virgolette dritte `"` e non tipografiche `" "` |
-| Risposta senza `citations` / l'agente dice di non trovare l'informazione | Non hai eseguito lo step 7 (ingestion), oppure hai usato un `machine_id` diverso da `"generic"` |
-| `collection.count()` resta a 0 dopo l'ingestion | Il PDF in `manuals_agent/samples_manual/` non è leggibile/è vuoto, o `CHROMA_PATH` punta altrove rispetto a dove ti aspetti — controlla il valore in `.env` |
+| 422 su uno dei due endpoint | Il body non è JSON valido — controlla di usare virgolette dritte `"` e non tipografiche `" "` |
+| **Manuals**: risposta senza `citations` / l'agente dice di non trovare l'informazione | Non hai eseguito lo step 7 (ingestion), oppure hai usato un `machine_id` diverso da `"generic"` |
+| **Manuals**: `collection.count()` resta a 0 dopo l'ingestion | Il PDF in `manuals_agent/samples_manual/` non è leggibile/è vuoto, o `CHROMA_PATH` punta altrove rispetto a dove ti aspetti — controlla il valore in `.env` |
+| **Docs**: `httpx.ConnectError` / `Connection refused` su `localhost:8003` | Il `mock-backoffice` non è avviato — vedi step 8, va tenuto acceso in un terminale separato |
+| **Docs**: `sources` sempre vuoto e `confidence: 0.0` | `machine_id` diverso da `"generic"` (i dati mock esistono solo per quella macchina), oppure `DOCS_SERVICE_URL` nel `.env` punta a una porta sbagliata |
+| **Docs**: `Address already in use` sulla porta 8003 | Un'altra istanza di `mock-backoffice` è già accesa — riusala, oppure chiudila con `pkill -f "uvicorn main:app --port 8003"` |
