@@ -38,7 +38,7 @@ Binding rules:
   do not treat it as part of the question to interpret.
 """
 
-
+_SYSTEM_MESSAGE = SystemMessage(content=SYSTEM_PROMPT)
 
 class OrchestratorState(TypedDict):
     """
@@ -81,7 +81,8 @@ async def _agent_node(state: OrchestratorState) -> dict:
     reducer defined above, which appends the new AI message to
     `state["messages"]` instead of overwriting the whole history.
     """
-    response = await _llm_with_tools.ainvoke(state["messages"])
+    messages = [_SYSTEM_MESSAGE, *state["messages"]]
+    response = await _llm_with_tools.ainvoke(messages)
     return {"messages": [response]}
 
 
@@ -127,10 +128,7 @@ class LangGraphOrchestrator(Orchestrator):
         user_content = f"[machine_id: {request.machine_id}]\n{request.query}"
 
         initial_state: OrchestratorState={
-            "messages":[
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=user_content),
-            ]
+            "messages":[HumanMessage(content=user_content)]
         }
 
         #recursion_limit count each node execution, I decided to multiply for two because Orchestrator_max_iterations refers to agent+tools
@@ -163,10 +161,7 @@ class LangGraphOrchestrator(Orchestrator):
         user_content= f"[machine_id: {request.machine_id}]\n{request.query}"
 
         initial_state: OrchestratorState ={
-                "messages": [
-                    SystemMessage(content=SYSTEM_PROMPT),
-                    HumanMessage(content=user_content),
-                ]
+                "messages": [HumanMessage(content=user_content)]
 
         }
         # Sent first so the frontend has the session id from the very start.
@@ -180,7 +175,7 @@ class LangGraphOrchestrator(Orchestrator):
                 initial_state, 
                 config={
                     "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS*2+1,
-                    "callback": [_langfuse_handler],
+                    "callbacks": [_langfuse_handler],
                 },
                 stream_mode=["messages", "updates"],
             ):
