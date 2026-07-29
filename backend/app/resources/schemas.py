@@ -3,12 +3,6 @@ from enum import Enum
 from pydantic import BaseModel
 
 
-class MachineType(str, Enum):
-    CAPPING = "capping"
-    FILLING = "filling"
-    INSPECTION = "inspection"
-
-
 class MachineStatus(str, Enum):
     ONLINE = "online"
     OFFLINE = "offline"
@@ -18,9 +12,9 @@ class MachineStatus(str, Enum):
 class Machine(BaseModel):
     id: str
     name: str
-    model: str
+    model: str          # real AROL model string (e.g. "AROL EQUATORQUE")
     serial_number: str
-    type: MachineType
-    status: MachineStatus
+    status: MachineStatus  # runtime state
+    location: str   #e.g. "Bottling Line 2"
 
 

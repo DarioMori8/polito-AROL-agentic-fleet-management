@@ -1,11 +1,8 @@
 # resources/router.py
 from fastapi import APIRouter, Depends, HTTPException
 
-from resources.repository import (
-    MachineRepository,
-    InMemoryMachineRepository,
-)
-from resources.schemas import Machine
+from app.resources.repository import (MachineRepository, InMemoryMachineRepository)
+from app.resources.schemas import Machine
 
 router = APIRouter(prefix="/v1", tags=["resources"])
 

@@ -2,7 +2,7 @@ import logging
 
 from fastapi import FastAPI
 from app.api.v1.chat import router as chat_router
-from resources.router import router as resources_router
+from app.resources.router import router as resources_router
 
 
 logging.basicConfig(

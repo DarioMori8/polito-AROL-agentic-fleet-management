@@ -1,7 +1,7 @@
 # resources/repository.py
 from abc import ABC, abstractmethod
 
-from resources.schemas import Machine, MachineType, MachineStatus
+from app.resources.schemas import Machine,  MachineStatus
 
 
 class MachineRepository(ABC):
@@ -15,16 +15,17 @@ class MachineRepository(ABC):
 
 # --- Mock data (the first implementation of the interfaces, not throwaway) ---
 
+
 _MACHINES: list[Machine] = [
-    Machine(id="1", name="Capping Line Alpha", model="AROL EQUATORQUE 18",
-            serial_number="AR-EQ-2021-0453", type=MachineType.CAPPING,
-            status=MachineStatus.ONLINE),
-    Machine(id="2", name="Capping Line Bravo", model="AROL EQUATORQUE 24",
-            serial_number="AR-EQ-2022-0817", type=MachineType.CAPPING,
-            status=MachineStatus.ONLINE),
-    Machine(id="3", name="Inspection Unit Charlie", model="AROL VISIONCHECK 4",
-            serial_number="AR-VC-2023-0129", type=MachineType.INSPECTION,
-            status=MachineStatus.MAINTENANCE),
+    Machine(id="1", name="Capping Line Alpha", model="AROL EURO PK",
+            serial_number="AR-EPK-2021-0453", status=MachineStatus.ONLINE,
+            location="Bottling Line 1"),
+    Machine(id="2", name="Capping Line Bravo", model="AROL EQUATORQUE",
+            serial_number="AR-EQT-2022-0817", status=MachineStatus.ONLINE,
+            location="Bottling Line 2"),
+    Machine(id="3", name="Capping Line Charlie", model="AROL EURO VP",
+            serial_number="AR-EVP-2023-0129", status=MachineStatus.MAINTENANCE,
+            location="Bottling Line 3"),
 ]
 
 
