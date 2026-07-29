@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router';
-import { useMachine } from './context/MachineContext';
+import { MachineProvider, useMachine } from './context/MachineContext';
 import LandingQR from './pages/LandingQR';
 import ChatWorkspace from './pages/ChatWorkspace';
-import { Cpu, ShieldAlert, CheckCircle2, Search } from 'lucide-react';
+import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw } from 'lucide-react';
 import './styles/App.css';
 import useChatApi from './hooks/useChatApi';
 
@@ -15,22 +15,21 @@ import useChatApi from './hooks/useChatApi';
  */
 function FleetView() {
   const navigate = useNavigate();
+  const { fleet, loading, error, fetchFleet } = useMachine();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
 
-  // TO BE REMOVED
-  // Hardcoded fleet database based on design specifications
-  const fleetMachines = [
-    { id: '001', name: 'AROL Capper #12', dept: 'Reparto Imbottigliamento', status: 'In Allarme', code: 'AR-CAP12' },
-    { id: '002', name: 'AROL Labeller #4', dept: 'Reparto Etichettatura', status: 'Operativo', code: 'AR-LAB04' },
-    { id: '003', name: 'AROL Filler #9', dept: 'Reparto Riempimento', status: 'Operativo', code: 'AR-FIL09' },
-  ];
+  // Trigger fleet load from server on mount
+  useEffect(() => {
+    fetchFleet();
+  }, [fetchFleet]);
 
+  // Status mappings: 'online' -> Operating, others -> In Alarm / Under Maintenance
   const filteredFleet = fleetMachines.filter(m => {
     const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.includes(searchQuery);
     if (activeFilter === 'all') return matchesSearch;
-    if (activeFilter === 'ok') return matchesSearch && (m.status === 'Operativo');
-    if (activeFilter === 'alarm') return matchesSearch && (m.status === 'In Allarme');
+    if (activeFilter === 'ok') return matchesSearch && (m.status === 'online');
+    if (activeFilter === 'alarm') return matchesSearch && (m.status !== 'online');
     return matchesSearch;
   });
 
@@ -45,9 +44,24 @@ function FleetView() {
         <div className="fleet-brand">AROL Group</div>
         <h1 className="fleet-title">Flotta Macchinari</h1>
         <p className="fleet-subtitle">Digital Fleet Portal & Asset Control</p>
+
+        {/* Dynamic Sync Trigger (WCAG Touch target compliant) */}
+        <button className="sync-fleet-btn" onClick={fetchFleet} disabled={loading} style={{ touchAction: 'manipulation' }}>
+          <RefreshCw size={14} className={loading ? 'spinning-icon' : ''} />
+          <span>Sincronizza Rete</span>
+        </button>
       </header>
 
       <main className="fleet-main">
+        {/* Connection Failure Toast Alert */}
+        {error && (
+          <div className="connection-error-banner">
+            <AlertTriangle size={16} />
+            <span>{error}</span>
+          </div>
+        )}
+
+
         {/* Search Input Bar (Rugged Touch Target) */}
         <div className="search-bar-rugged">
           <Search className="search-icon" size={18} />
@@ -62,61 +76,58 @@ function FleetView() {
 
         {/* Filter Selection Row */}
         <div className="filter-chips-row">
-          <button
-            className={`filter-chip ${activeFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setActiveFilter('all')}
-          >
-            Tutti
+          <button className={`filter-chip ${activeFilter === 'all' ? 'active' : ''}`} onClick={() => setActiveFilter('all')}>
+            Tutti ({fleet.length})
           </button>
-          <button
-            className={`filter-chip ${activeFilter === 'ok' ? 'active' : ''}`}
-            onClick={() => setActiveFilter('ok')}
-          >
-            Operativi
+          <button className={`filter-chip ${activeFilter === 'ok' ? 'active' : ''}`} onClick={() => setActiveFilter('ok')}>
+            Operativi ({fleet.filter(m => m.status === 'online').length})
           </button>
-          <button
-            className={`filter-chip ${activeFilter === 'alarm' ? 'active' : ''}`}
-            onClick={() => setActiveFilter('alarm')}
-          >
-            In Errore
+          <button className={`filter-chip ${activeFilter === 'alarm' ? 'active' : ''}`} onClick={() => setActiveFilter('alarm')}>
+            In Errore ({fleet.filter(m => m.status !== 'online').length})
           </button>
         </div>
 
-        {/* Fleet Card Grid */}
-        <div className="fleet-grid">
-          {filteredFleet.map((machine) => (
-            <div
-              key={machine.id}
-              className={`machine-card-rugged ${machine.status === 'In Allarme' ? 'border-alarm' : ''}`}
-              onClick={() => handleMachineClick(machine.id)}
-              style={{ touchAction: 'manipulation' }}
-            >
-              <div className="card-hardware-icon-wrapper">
-                <Cpu size={24} />
-              </div>
+        {loading && fleet.length === 0 ? (
+          <div className="fleet-loading-view">
+            <RefreshCw size={36} className="spinning-icon" />
+            <p>Interrogazione database macchinari in corso...</p>
+          </div>
+        ) : (
+          <div className="fleet-grid"> {/* Fleet Card Grid */}
+            {filteredFleet.map((machine) => (
+              <div
+                key={machine.id}
+                className={`machine-card-rugged ${machine.status !== 'online' ? 'border-alarm' : ''}`}
+                onClick={() => handleMachineClick(machine.id)}
+                style={{ touchAction: 'manipulation' }}
+              >
+                <div className="card-hardware-icon-wrapper">
+                  <Cpu size={24} />
+                </div>
 
-              <div className="card-info">
-                <h3 className="card-machine-name">{machine.name}</h3>
-                <span className="card-machine-id">ID: {machine.id} ({machine.code})</span>
-                <span className="card-machine-dept">{machine.dept}</span>
+                <div className="card-info">
+                  <h3 className="card-machine-name">{machine.name}</h3>
+                  <span className="card-machine-id">ID: {machine.id} ({machine.model || 'Standard'})</span>
+                  <span className="card-machine-dept">S/N: {machine.serial_number || 'N/D'} • {machine.location}</span>
 
-                <div className="card-status-row">
-                  {machine.status === 'In Allarme' ? (
-                    <span className="card-badge badge-error">
-                      <ShieldAlert size={12} style={{ marginRight: '4px' }} />
-                      Stato: In Allarme
-                    </span>
-                  ) : (
-                    <span className="card-badge badge-success">
-                      <CheckCircle2 size={12} style={{ marginRight: '4px' }} />
-                      Stato: Operativo
-                    </span>
-                  )}
+                  <div className="card-status-row">
+                    {machine.status !== 'online' ? (
+                      <span className="card-badge badge-error">
+                        <ShieldAlert size={12} style={{ marginRight: '4px' }} />
+                        Stato: {machine.status === 'maintenance' ? 'Manutenzione' : 'Offline'}
+                      </span>
+                    ) : (
+                      <span className="card-badge badge-success">
+                        <CheckCircle2 size={12} style={{ marginRight: '4px' }} />
+                        Stato: Operativo
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </main>
 
       <footer className="fleet-footer">
@@ -167,15 +178,15 @@ function WorkspaceWrapper() {
   const [messages, setMessages] = useState([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // Consume useChatApi custom hook
-  const { sendMessage: apiSendMessage, isLoading, error: apiError } = useChatApi()
+  // Real-time EventStream Consumer hook
+  const { streamMessage, isStreaming, abortStream } = useChatStream();
 
   // Trigger Context load if the user types or deep-links directly into the workspace URL
   useEffect(() => {
-    if (id && (!activeMachine || activeMachine.id !== id)) {
+    if (id && (!activeMachine || activeMachine.id.toString() !== id.toString())) {
       scanMachine(id);
     }
-  }, [id, activeMachine]);
+  }, [id, activeMachine, scanMachine]);
 
   // Welcome message initialization
   useEffect(() => {
@@ -194,9 +205,17 @@ function WorkspaceWrapper() {
     }
   }, [activeMachine, id]);
 
-  const handleSendMessage = async (messageData) => {
-    const userMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Clean-up connection on unmount
+  useEffect(() => {
+    return () => abortStream();
+  }, [abortStream]);
 
+  /**
+   * Orchestrates the message sending flow utilizing Server-Sent Events (SSE).
+   */
+  const handleSendMessage = async (messageData) => {
+    // 1. Append User Message
+    const userMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newUserMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
@@ -206,27 +225,53 @@ function WorkspaceWrapper() {
     };
 
     setMessages((prev) => [...prev, newUserMessage]);
-    setIsAiLoading(true);
 
-    try {
-      // Call FastAPI endpoint (Pass 'generic' or real machine_id)
-      const aiResponse = await apiSendMessage(messageData.text, id);
-      if (aiResponse) {
-        setMessages((prev) => [...prev, aiResponse]);
+    // 2. Prepare Temporary AI streaming placeholder
+    const aiMessageId = `ai-stream-${Date.now()}`;
+    const aiPlaceholder = {
+      id: aiMessageId,
+      sender: 'assistant',
+      text: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'sending',
+      citations: []
+    };
+
+    setMessages((prev) => [...prev, aiPlaceholder]);
+
+    // 3. Initiate Stream connection to POST /v1/chat/stream
+    streamMessage({
+      query: messageData.text,
+      machineId: id,
+      onToken: (chunk) => {
+        // Progressively write the text character-by-character
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMessageId
+              ? { ...msg, text: msg.text + chunk }
+              : msg
+          )
+        );
+      },
+      onComplete: (finalMessage) => {
+        // Swap the streaming bubble with the complete structured payload
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMessageId ? finalMessage : msg
+          )
+        );
+      },
+      onError: (errText) => {
+        // Render error state on failure for retry triggers
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMessageId
+              ? { ...msg, text: `⚠️ Impossibile generare la risposta: ${errText}`, status: 'error' }
+              : msg
+          )
+        );
       }
-    } catch (err) {
-      // If call fails, create an error bubble in chat to allow retry
-      const errorMsg = {
-        id: `err-${Date.now()}`,
-        sender: 'assistant',
-        text: `⚠️ I couldn't contact the Orchestrator AI. ${err.message || ''}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: 'error'
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    }
-
-    setIsAiLoading(false);
+    });
   };
 
   const handleSuggestionClick = (chipId, actionText) => {
@@ -234,6 +279,7 @@ function WorkspaceWrapper() {
   };
 
   const handleBackToFleet = () => {
+    abortStream();
     setMessages([]);
     navigate('/');
   };
@@ -241,7 +287,7 @@ function WorkspaceWrapper() {
   return (
     <ChatWorkspace
       messages={messages}
-      isLoading={isAiLoading}
+      isLoading={isStreaming}
       onSendMessage={handleSendMessage}
       onSuggestionClick={handleSuggestionClick}
       onBackClick={handleBackToFleet}
@@ -254,20 +300,22 @@ function WorkspaceWrapper() {
  */
 export default function App() {
   return (
-    <Router>
-      <div className="app-viewport">
-        <Routes>
-          {/* Main Fleet View Route */}
-          <Route path="/" element={<FleetView />} />
-          <Route path="/fleet" element={<FleetView />} />
+    <MachineProvider>
+      <Router>
+        <div className="app-viewport">
+          <Routes>
+            {/* Main Fleet View Route */}
+            <Route path="/" element={<FleetView />} />
+            <Route path="/fleet" element={<FleetView />} />
 
-          {/* QR Scan Landing and Resolution Route */}
-          <Route path="/machine/:id" element={<LandingResolver />} />
+            {/* QR Scan Landing and Resolution Route */}
+            <Route path="/machine/:id" element={<LandingResolver />} />
 
-          {/* Conversational and Diagnostic Workspace Route */}
-          <Route path="/workspace/:id" element={<WorkspaceWrapper />} />
-        </Routes>
-      </div>
-    </Router>
+            {/* Conversational and Diagnostic Workspace Route */}
+            <Route path="/workspace/:id" element={<WorkspaceWrapper />} />
+          </Routes>
+        </div>
+      </Router>
+    </MachineProvider>
   );
 }
