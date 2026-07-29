@@ -8,6 +8,7 @@ from langchain_ollama import ChatOllama
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import MemorySaver
 
 from app.config import settings
 from app.models.chat import ChatRequest, ChatResponse
@@ -116,14 +117,18 @@ _graph_builder.add_conditional_edges("agent", tools_condition)
 # This is the core loop of the ReAct pattern (Reason -> Act -> Reason -> ...).
 _graph_builder.add_edge("tools", "agent")
 
+_checkpointer = MemorySaver()
+
 # .compile() turns the graph definition into an executable object
 # that can be invoked (e.g. graph.ainvoke(...) / graph.astream(...)).
-graph = _graph_builder.compile()
-
+graph = _graph_builder.compile(checkpointer=_checkpointer)
 
 class LangGraphOrchestrator(Orchestrator):
 
     async def handle(self, request: ChatRequest)-> ChatResponse:
+
+        session_id = request.session_id or str(uuid.uuid4())
+
 
         user_content = f"[machine_id: {request.machine_id}]\n{request.query}"
 
@@ -137,6 +142,7 @@ class LangGraphOrchestrator(Orchestrator):
             config={
                 "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1,
                 "callbacks": [_langfuse_handler],
+                "configurable": {"thread_id": session_id}
             },
         )
 
@@ -146,7 +152,7 @@ class LangGraphOrchestrator(Orchestrator):
         return ChatResponse(
             answer=final_message.content or "",
             citations=citations,
-            session_id="temp-session-id",  
+            session_id=session_id,  
         )
 
     async def handle_stream(self, request: ChatRequest)-> AsyncIterator[dict]:
@@ -157,7 +163,8 @@ class LangGraphOrchestrator(Orchestrator):
             / done. The endpoint layer is responsible for serializing these into
             the SSE wire format — this method stays transport-agnostic.
         """
-        session_id =str(uuid.uuid4())
+        session_id = request.session_id or str(uuid.uuid4())  
+
         user_content= f"[machine_id: {request.machine_id}]\n{request.query}"
 
         initial_state: OrchestratorState ={
@@ -176,6 +183,7 @@ class LangGraphOrchestrator(Orchestrator):
                 config={
                     "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS*2+1,
                     "callbacks": [_langfuse_handler],
+                    "configurable": {"thread_id": session_id},
                 },
                 stream_mode=["messages", "updates"],
             ):

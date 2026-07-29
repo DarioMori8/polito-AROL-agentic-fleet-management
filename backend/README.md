@@ -10,8 +10,16 @@ is now expressed as a compiled **LangGraph** `StateGraph`. The routing
 decision itself is unchanged (an LLM reading tool descriptions decides
 which agent(s) to call) — what changes is the engine that drives the
 loop, in exchange for built-in tool execution (`ToolNode`), a
+ready-made conditional-routing helper (`tools_condition`), and loop, in exchange for built-in tool execution (`ToolNode`), a
 ready-made conditional-routing helper (`tools_condition`), and a
-foundation for checkpointing (session persistence, not yet wired). On
+foundation for checkpointing. On top of this iteration, three
+capabilities are now wired in: **Langfuse tracing** (via a module-level
+`CallbackHandler` passed to the graph), **token-by-token streaming** of
+the answer over Server-Sent Events (see the API section), and
+**in-memory checkpointing** — the graph is compiled with a `MemorySaver`
+so that turns sharing a `session_id` accumulate into one conversation.
+This memory currently lives in process RAM (it does not survive a
+restart); swapping in a durable saver (`SqliteSaver`) is the next step.. On
 top of this iteration, two capabilities are now wired in: **Langfuse
 tracing** (via a module-level `CallbackHandler` passed to the graph)
 and **token-by-token streaming** of the answer over Server-Sent Events
@@ -45,8 +53,13 @@ backend/
 │   │   ├── base.py                # Abstract interface for agent clients
 │   │   ├── manuals_client.py      # HTTP client for the Manuals Agent
 │   │   └── exceptions.py          # AgentUnavailableError (domain-level error)
-│   └── models/
-│       └── chat.py                # ChatRequest / ChatResponse (endpoint contract)
+│   |── models/
+│   |    └── chat.py                # ChatRequest / ChatResponse (endpoint contract)
+|   └── resources/
+|           |── repository.py
+|           |── router.py           #GET /v1/machines/{machine_id}, GET /v1/machines/{machine_id}/manuals, GET /v1/manauls/{manual_id} and GET /v1/machines
+|           └── schemas.py
+|
 ├── requirements.txt
 ├── .env
 ├── .dockerignore
@@ -114,6 +127,15 @@ exist.
   not full reason/act cycles — computed as
   `ORCHESTRATOR_MAX_ITERATIONS * 2 + 1`, an approximation to re-tune
   with real testing.
+  The graph is compiled with a checkpointer (`MemorySaver`), so each
+  invocation is keyed by a `thread_id` passed in
+  `config["configurable"]`. Both entry points derive it as
+  `request.session_id or str(uuid4())` — a missing id means "new
+  conversation" (generate one), a present id means "resume that thread".
+  The persisted state holds conversation messages only: the system
+  prompt is prepended inside the `agent` node at call time rather than
+  seeded into state, so it never accumulates across turns as
+  `add_messages` merges each new turn onto the loaded history.
 
 ### `app/clients/`
 One client class per agent, each implementing a shared abstract
@@ -133,9 +155,11 @@ rather than a temporary glitch.
 ### `app/models/`
 Pydantic schemas shared with the Agents project via the `contracts`
 package (e.g. `SearchManualResponse`, `Citation`). `app/models/chat.py`
-defines `ChatRequest`/`ChatResponse`, the contract for the `/v1/chat`
-endpoint itself (not shared with the agents project, since it's
-backend/frontend-specific).
+defines `ChatRequest`/`ChatResponse`, the contract for the chat
+endpoints (not shared with the agents project, since it's
+backend/frontend-specific). `ChatRequest.session_id` is optional —
+absent on the first turn, echoed back by the client on subsequent turns
+to continue the same conversation.
 
 ## API
 
@@ -205,6 +229,7 @@ if no manual with that id exists.
 |--------------|-------|-------------|
 | `query`      | `str` | The user's question in natural language. |
 | `machine_id` | `str` | Identifier of the machine the question refers to. Injected into the tool call, not treated as part of the question to interpret. |
+| `session_id` | `str \| None` | Conversation id. Omit (or `null`) to start a new conversation; pass the id returned by a previous turn to continue it. |
 
 ```json
 { "query": "perché la macchina non parte", "machine_id": "2" }
@@ -216,13 +241,13 @@ if no manual with that id exists.
 |--------------|-------------------|-------------|
 | `answer`     | `str`             | Final assistant response, composed by the orchestrator strictly from the tool results. |
 | `citations`  | `list[Citation]`  | Structured references extracted from the tool artifacts; each `Citation` has `doc`, `page`, `snippet`. Empty list if none. |
-| `session_id` | `str`             | Conversation identifier. Currently a placeholder (`"temp-session-id"`) until checkpointing is wired; will become the persistent `thread_id`. |
+| `session_id` | `str`             | Conversation identifier (the graph's `thread_id`). Always returned — freshly generated on a new conversation, or echoed back when resuming. Send it in the next `ChatRequest` to continue the conversation. |
 
 ```json
 {
   "answer": "...",
   "citations": [{ "doc": "manual_1.pdf", "page": 12, "snippet": "..." }],
-  "session_id": "temp-session-id"
+  "session_id": "3f2c1a9e-8b7d-4e6f-a1c2-9d8e7f6a5b4c"
 }
 ```
 
@@ -245,7 +270,7 @@ Event sequence for a typical turn:
 
 | Event       | When | `data` payload |
 |-------------|------|----------------|
-| `start`     | Once, before the graph runs | `{ "type": "start", "session_id": "<uuid>" }` — a freshly generated id, sent first so the frontend has it from the first byte. |
+| `start`     | Once, before the graph runs | `{ "type": "start", "session_id": "<uuid>" }` — the conversation id (echoed from the request if resuming, freshly generated otherwise), sent first so the frontend has it from the first byte. |
 | `thinking`  | While the routing LLM reasons (model-dependent) | `{ "type": "thinking", "text": "<chunk>" }` — reasoning tokens, delivered on a channel separate from the answer, meant to be shown collapsed/greyed. |
 | `status`    | When the LLM decides to call an agent | `{ "type": "status", "tool": "search_manuals", "message": "Consulting search_manuals..." }` — fills the silent gap of the HTTP call to the agent. |
 | `token`     | While the final answer is generated | `{ "type": "token", "text": "<chunk>" }` — one content chunk; concatenating all `token` events rebuilds the full answer. |
@@ -357,14 +382,14 @@ debug print inside `handle()` / `handle_stream()` still works.
 
 ## Known limitations / next steps
 
-- **No checkpointing yet** — `StateGraph` supports persistence
-  (`SqliteSaver`/`PostgresSaver`) but it isn't wired in. `ChatRequest`
-  still has no `conversation_history` field, and `session_id` is either
-  a placeholder (non-streaming) or a per-request UUID that is generated
-  and discarded (streaming). Wiring a checkpointer would turn that id
-  into a persistent `thread_id`, making each turn part of an ongoing
-  conversation. Planned as the next milestone.
-- **Same model used for both the orchestrator and the Manuals Agent**
+- **Checkpointing is in-memory only** — the graph is compiled with a
+  `MemorySaver`, so a conversation is remembered across turns *within a
+  running process*, but all conversations are lost on restart (the store
+  is a dict in process RAM). Swapping in `AsyncSqliteSaver` for durable,
+  restart-surviving persistence is the next step, followed by a
+  `GET /v1/conversations/{id}/messages` history endpoint (which the
+  checkpointer's `aget_state` makes almost free once persistence is
+  durable). the Manuals Agent**
   (`gpt-oss:20b`) — chosen for simplicity/VRAM-safety on 16GB hardware
   (no model-swapping), at the cost of using a heavier-than-necessary
   model for the lightweight routing task. Not yet benchmarked against a
