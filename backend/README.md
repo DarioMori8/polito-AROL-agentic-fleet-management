@@ -167,8 +167,8 @@ Fleet list. Takes no input. Returns every machine in the customer's
 park.
 
 **Returns**: a JSON array of machine objects, each with `id`, `name`,
-`model`, `serial_number`, `type` (`capping` / `filling` / `inspection`)
-and `status` (`online` / `offline` / `maintenance`). An empty array is a
+`model`, `serial_number`, 
+`status` (`online` / `offline` / `maintenance`) and `location` . An empty array is a
 valid response (no machines catalogued).
 
 ### `GET /v1/machines/{machine_id}`
@@ -180,6 +180,24 @@ machine id in the path and returns that single machine's record.
 if no machine with that id exists. The id space is shared with the chat
 endpoint's `machine_id`, so the same identifier addresses a machine
 everywhere in the system.
+
+
+### `GET /v1/machines/{machine_id}/manuals`
+
+Fleet list. Takes no input. Returns all manuals of that machine.
+
+**Returns**: a JSON array of manual objects, each with `id`, `machine_id`,
+`title`, `filename`, `language`, `page_count`
+and `url`. An empty array is a
+valid response (no machines catalogued).
+
+### `GET /v1/manuals/{manual_id}`
+
+Manual detail, receives a
+manual id in the path and returns that single manual's record.
+
+**Returns**: one manual object (same fields as above). Responds `404`
+if no manual with that id exists. 
 
 **Receives** — `ChatRequest`:
 

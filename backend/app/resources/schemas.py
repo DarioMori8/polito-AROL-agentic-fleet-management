@@ -18,3 +18,11 @@ class Machine(BaseModel):
     location: str   #e.g. "Bottling Line 2"
 
 
+class Manual(BaseModel):
+    id: str
+    machine_id: str
+    title: str
+    filename: str
+    language: str
+    page_count: int
+    url: str
