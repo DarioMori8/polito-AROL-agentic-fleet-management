@@ -20,7 +20,7 @@ export default function ChatWorkspace({
 }) {
     const { activeMachine, isScanned, clearMachine } = useMachine();
 
-    // Mobile Tab State: 'chat' | 'iot' | 'manuals'
+    // Mobile Tab State: 'chat' | 'manuals'
     const [activeTab, setActiveTab] = useState('chat');
 
     // Selected citation state passed to the ManualViewer
@@ -73,8 +73,8 @@ export default function ChatWorkspace({
         <div className={`workspace-container ${isTabletLayout ? 'tablet-split' : 'mobile-single'}`}>
 
             {/* ==========================================
-         LAYOUT 1: TABLET SPLIT SCREEN (Multi-Column)
-         ========================================== */}
+                LAYOUT 1: TABLET SPLIT SCREEN (Multi-Column)
+                ========================================== */}
             {isTabletLayout ? (
                 <div className="split-layout-wrapper">
                     {/* Left Column: Fixed Conversational Stream */}
@@ -90,16 +90,9 @@ export default function ChatWorkspace({
                         />
                     </aside>
 
-                    {/* Right Column: Contextual Pane (IoT / Manual PDF) */}
+                    {/* Right Column: Contextual Pane (Manual PDF) */}
                     <main className="split-column split-right">
                         <div className="split-right-header">
-                            <button
-                                className={`pane-tab-btn ${activeTab === 'iot' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('iot')}
-                            >
-                                <LineChart size={16} />
-                                Telemetria IoT Real-Time
-                            </button>
                             <button
                                 className={`pane-tab-btn ${activeTab === 'manuals' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('manuals')}
@@ -114,32 +107,11 @@ export default function ChatWorkspace({
                             className="pane-content-viewport"
                             style={{ padding: activeTab === 'manuals' ? 0 : '20px' }}
                         >
-                            {activeTab === 'iot' ? (
-                                /* IoT Dashboard Mock Skeleton */
-                                <div className="pane-skeleton iot-skeleton">
-                                    <div className="skeleton-kpi-grid">
-                                        <div className="skeleton-kpi-card">
-                                            <span className="kpi-label">TEMPERATURA BASAMENTO</span>
-                                            <span className="kpi-value warning">68.4 °C</span>
-                                            <span className="kpi-status">Soglia critica superata</span>
-                                        </div>
-                                        <div className="skeleton-kpi-card">
-                                            <span className="kpi-label">COPPIA DI SERRAGGIO</span>
-                                            <span className="kpi-value success">14.2 Nm</span>
-                                            <span className="kpi-status">Valore ottimale</span>
-                                        </div>
-                                    </div>
-                                    <div className="skeleton-chart-container">
-                                        <span className="chart-placeholder-text">Grafico IoT Temporale (In fase di sviluppo...)</span>
-                                    </div>
-                                </div>
-                            ) : (
-                                /* Real interactive ManualViewer */
-                                <ManualViewer
-                                    selectedCitation={selectedCitation}
-                                    defaultDoc="Manuale_Euro_VP_Manutenzione.pdf"
-                                />
-                            )}
+                            {/* Real interactive ManualViewer */}
+                            <ManualViewer
+                                selectedCitation={selectedCitation}
+                                defaultDoc="Manuale_Euro_VP_Manutenzione.pdf"
+                            />
                         </div>
                     </main>
                 </div>
@@ -161,32 +133,6 @@ export default function ChatWorkspace({
                                 onBackClick={onBackClick}
                                 onCitationClick={handleCitationClick}
                             />
-                        )}
-
-                        {activeTab === 'iot' && (
-                            <div className="mobile-pane-wrapper">
-                                <header className="mobile-pane-header">
-                                    <h2>Telemetria Real-Time</h2>
-                                    <span className="machine-tag">{activeMachine.name}</span>
-                                </header>
-                                <div className="pane-content-viewport">
-                                    <div className="pane-skeleton iot-skeleton">
-                                        <div className="skeleton-kpi-grid">
-                                            <div className="skeleton-kpi-card">
-                                                <span className="kpi-label">TEMPERATURA BASAMENTO</span>
-                                                <span className="kpi-value warning">68.4 °C</span>
-                                            </div>
-                                            <div className="skeleton-kpi-card">
-                                                <span className="kpi-label">COPPIA DI SERRAGGIO</span>
-                                                <span className="kpi-value success">14.2 Nm</span>
-                                            </div>
-                                        </div>
-                                        <div className="skeleton-chart-container">
-                                            <span className="chart-placeholder-text">Visualizzazione Grafico IoT</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                         )}
 
                         {activeTab === 'manuals' && (
@@ -223,15 +169,6 @@ export default function ChatWorkspace({
                         >
                             <BookOpen size={20} />
                             <span className="tab-label-text">Manuale PDF</span>
-                        </button>
-
-                        <button
-                            className={`tab-item-rugged ${activeTab === 'iot' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('iot')}
-                            aria-label="IoT Telemetria"
-                        >
-                            <LineChart size={20} />
-                            <span className="tab-label-text">Parametri IoT</span>
                         </button>
 
                         <button

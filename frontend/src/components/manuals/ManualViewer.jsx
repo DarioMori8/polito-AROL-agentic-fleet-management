@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useMachine } from '@/context/MachineContext';
 import {
     BookOpen,
     ChevronLeft,
@@ -11,13 +12,14 @@ import {
     Copy,
     Check,
     FileText,
-    Sliders
+    Sliders,
+    AlertTriangle
 } from 'lucide-react';
 import '@/styles/ManualViewer.css';
 
 // TO BE REMOVED WHEN REAL MANUAL DATABASE IMPLEMENTED
-// Rich mock technical documentation database for in-field simulation (Fase 1/2 DoD)
-const MANUALS_DATABASE = {
+// Rich fallback technical documentation database for in-field simulation (Fase 1/2 DoD)
+const FALLBACK_MANUALS_DATABASE = {
     'Manuale_Euro_VP_Manutenzione.pdf': {
         title: 'AROL Euro VP - Use & Maintenance Manual',
         totalPages: 80,
@@ -83,11 +85,18 @@ const MANUALS_DATABASE = {
 };
 
 /**
- * ManualViewer Component (Rugged UI)
- * Displays technical manual pages, handles PDF text/schematics mockups, 
- * features page-by-page routing, zooming, fullscreen modes, and keyword searching.
+ * ManualViewer Component (Context Aware & Dynamic)
+ *
+ * Sinks directly into AROL's MachineContext to dynamically fetch and display real
+ * technical manuals retrieved via 'GET /v1/machines/{id}/manuals'.
+ * 
+ * If citations are passed from the conversational RAG engine, it overrides active document
+ * selections, jumps to the exact page, and renders the live retrieved Vector DB snippet
+ * within an engineering blueprint canvas.
  */
 export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Manuale_Euro_VP_Manutenzione.pdf' }) {
+    const { activeManuals, activeMachine } = useMachine();
+
     // Navigation & document states
     const [activeDocName, setActiveDocName] = useState(defaultDoc);
     const [currentPage, setCurrentPage] = useState(24);
@@ -103,29 +112,99 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
     const [copied, setCopied] = useState(false);
     const viewerRef = useRef(null);
 
+    // Determine current active list of manuals (Server-loaded vs Offline fallback)
+    const isUsingFallback = !activeManuals || activeManuals.length === 0;
+    const manualsList = isUsingFallback
+        ? Object.keys(FALLBACK_MANUALS_DATABASE).map(filename => ({
+            filename,
+            title: FALLBACK_MANUALS_DATABASE[filename].title,
+            page_count: FALLBACK_MANUALS_DATABASE[filename].totalPages
+        }))
+        : activeManuals;
+
+    // Settle on an initial active document when manuals are retrieved or modified
+    useEffect(() => {
+        if (manualsList.length > 0) {
+            // If our current doc is not in the list, set the first available manual
+            const docExists = manualsList.some(m => m.filename === activeDocName);
+            if (!docExists) {
+                setActiveDocName(manualsList.filename);
+                setCurrentPage(1);
+            }
+        }
+    }, [manualsList, activeDocName]);
+
     // Sync state when a user clicks on an AI citation in the chat (Inter-component communication)
     useEffect(() => {
         if (selectedCitation && selectedCitation.docName) {
-            if (MANUALS_DATABASE[selectedCitation.docName]) {
+            const matchExists = manualsList.some(m => m.filename === selectedCitation.docName);
+            if (matchExists) {
                 setActiveDocName(selectedCitation.docName);
                 setCurrentPage(selectedCitation.page || 1);
+            } else {
+                // Safe check for offline match
+                if (FALLBACK_MANUALS_DATABASE[selectedCitation.docName]) {
+                    setActiveDocName(selectedCitation.docName);
+                    setCurrentPage(selectedCitation.page || 1);
+                }
             }
         }
-    }, [selectedCitation]);
+    }, [selectedCitation, manualsList]);
 
-    // Handle active document lookup
-    const activeDoc = MANUALS_DATABASE[activeDocName] || MANUALS_DATABASE[defaultDoc];
-    const pageData = activeDoc?.pages[currentPage] || {
-        section: 'General Technical Specs',
-        title: 'STANDARD TECHNICAL OPERATION DOCUMENT',
-        text: `Technical documentation is loaded. Standard manual operation guide. You are viewing page ${currentPage} of ${activeDocName}. Refer to adjacent pages or consult AROL Support for advanced repair procedures.`,
-        specs: [
-            { label: 'Document Code', value: activeDocName.replace('.pdf', '') },
-            { label: 'Current Page', value: `${currentPage} / ${activeDoc?.totalPages}` },
-            { label: 'Document Status', value: 'Official / Active' }
-        ],
-        blueprintType: 'default'
+    // Retrieve current active manual details
+    const activeManualRecord = manualsList.find(m => m.filename === activeDocName);
+    const totalPagesCount = activeManualRecord ? activeManualRecord.page_count : 100;
+
+    // Parse page content either from fallback database or inject real RAG snippet
+    const getPageContent = () => {
+        // 1. Check if we have pre-defined mock page data matching this file & page
+        const fallbackDoc = FALLBACK_MANUALS_DATABASE[activeDocName];
+        if (fallbackDoc && fallbackDoc.pages[currentPage]) {
+            const fallbackPage = fallbackDoc.pages[currentPage];
+
+            // If the user clicked on this specific page as a RAG citation and it has a live snippet, 
+            // we enrich the page content with the real Vector DB chunk dynamically!
+            if (selectedCitation && selectedCitation.docName === activeDocName && selectedCitation.page === currentPage && selectedCitation.snippet) {
+                return {
+                    ...fallbackPage,
+                    text: selectedCitation.snippet, // Real LLM/Chroma chunk injected!
+                    isSnippetInjected: true
+                };
+            }
+            return fallbackPage;
+        }
+
+        // 2. If no mock blueprint exists for this file/page, but we have a live active citation snippet, we draw it!
+        if (selectedCitation && selectedCitation.docName === activeDocName && selectedCitation.page === currentPage && selectedCitation.snippet) {
+            return {
+                section: 'AI RAG Retrieved Segment',
+                title: 'LIVE VECTOR DB DOCUMENT EXTRACT',
+                text: selectedCitation.snippet,
+                specs: [
+                    { label: 'Source File', value: activeDocName },
+                    { label: 'Reference Page', value: `${currentPage}` },
+                    { label: 'Database Segment', value: 'ChromaDB Active Chunk' }
+                ],
+                blueprintType: 'default',
+                isSnippetInjected: true
+            };
+        }
+
+        // 3. Fallback standard page view for non-indexed pages
+        return {
+            section: 'Technical Instruction Sheet',
+            title: 'AROL SYSTEM RUNTIME DOCUMENTATION',
+            text: `This technical documentation segment is dynamically cataloged on the server. You are viewing page ${currentPage} of ${activeDocName}. Please consult the RAG chatbot to query specific troubleshooting procedures or maintenance thresholds from this manual.`,
+            specs: [
+                { label: 'Document Name', value: activeDocName },
+                { label: 'Active Page', value: `${currentPage} / ${totalPagesCount}` },
+                { label: 'Integration Status', value: isUsingFallback ? 'Offline Cache' : 'Active REST Endpoint' }
+            ],
+            blueprintType: 'default'
+        };
     };
+
+    const pageData = getPageContent();
 
     // Document Navigation
     const handleNextPage = () => {
@@ -143,9 +222,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
     const handleDocChange = (e) => {
         const docName = e.target.value;
         setActiveDocName(docName);
-        // Automatically set default page based on available indices
-        const availablePages = Object.keys(MANUALS_DATABASE[docName].pages).map(Number);
-        setCurrentPage(availablePages.length > 0 ? availablePages : 1);
+        setCurrentPage(1);
     };
 
     // Zoom Operations
@@ -186,7 +263,9 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         }
 
         const matches = [];
-        Object.entries(MANUALS_DATABASE).forEach(([docKey, docVal]) => {
+
+        // Search inside fallback database
+        Object.entries(FALLBACK_MANUALS_DATABASE).forEach(([docKey, docVal]) => {
             Object.entries(docVal.pages).forEach(([pageNum, pageVal]) => {
                 const textContent = `${pageVal.title} ${pageVal.text} ${pageVal.section}`.toLowerCase();
                 if (textContent.includes(query.toLowerCase())) {
@@ -199,6 +278,19 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                 }
             });
         });
+
+        // Also search active manuals index
+        manualsList.forEach(m => {
+            if (!FALLBACK_MANUALS_DATABASE[m.filename] && m.title.toLowerCase().includes(query.toLowerCase())) {
+                matches.push({
+                    docName: m.filename,
+                    page: 1,
+                    title: m.title,
+                    section: 'Document Cover'
+                });
+            }
+        });
+
         setSearchResults(matches);
     };
 
@@ -230,12 +322,17 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                         onChange={handleDocChange}
                         aria-label="Select Technical Document"
                     >
-                        {Object.keys(MANUALS_DATABASE).map((docKey) => (
-                            <option key={docKey} value={docKey}>
-                                {docKey.length > 25 ? `${docKey.substring(0, 25)}...` : docKey}
+                        {manualsList.map((m) => (
+                            <option key={m.filename} value={m.filename}>
+                                {m.filename.length > 25 ? `${m.filename.substring(0, 25)}...` : m.filename}
                             </option>
                         ))}
                     </select>
+                    {isUsingFallback && (
+                        <span className="offline-badge" title="No real manuals fetched, using cached fallback">
+                            Offline Cache
+                        </span>
+                    )}
                 </div>
 
                 <div className="toolbar-center-navigation">
@@ -401,7 +498,16 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                             {/* Right Column: Detailed technical instruction sheet */}
                             <div className="blueprint-column-text">
                                 <h1 className="instruction-headline">{pageData.title}</h1>
-                                <p className="instruction-paragraph">{pageData.text}</p>
+
+                                {/* Injected Snippet Highlighted Box */}
+                                {pageData.isSnippetInjected ? (
+                                    <div className="injected-rag-highlight-box">
+                                        <span className="injected-badge">Real-Time Chroma DB Chunk</span>
+                                        <p className="instruction-paragraph highlight-text">{pageData.text}</p>
+                                    </div>
+                                ) : (
+                                    <p className="instruction-paragraph">{pageData.text}</p>
+                                )}
 
                                 <h2 className="specs-sub-header">
                                     <Sliders size={14} style={{ marginRight: '6px', color: 'var(--arol-blue)' }} />
