@@ -1,128 +1,153 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-const MachineContext = createContext();
-
-/**
- * Mock database representing the AROL machinery fleet.
- * Acts as a fallback/mock data source before connecting to the FastAPI backend.
- * TO BE DELETED WHEN FASTAPI AND REAL DB IS READY
- */
-const MOCK_MACHINES_DB = {
-    '001': {
-        id: '001',
-        name: 'AROL Capper #12',
-        department: 'Reparto Imbottigliamento',
-        status: 'In Allarme', // Can be: 'Operativo', 'In Allarme', 'In Manutenzione'
-        serialNumber: 'AR-CAP12-2026',
-        installationDate: '2023-05-14',
-        lastMaintenance: '2026-06-10',
-        modelType: 'Euro VP'
-    },
-    '002': {
-        id: '002',
-        name: 'AROL Labeller #4',
-        department: 'Reparto Etichettatura',
-        status: 'Operativo',
-        serialNumber: 'AR-LAB04-2025',
-        installationDate: '2024-02-18',
-        lastMaintenance: '2026-05-22',
-        modelType: 'Deco'
-    },
-    '003': {
-        id: '003',
-        name: 'AROL Filler #9',
-        department: 'Reparto Riempimento',
-        status: 'Operativo',
-        serialNumber: 'AR-FIL09-2024',
-        installationDate: '2022-11-05',
-        lastMaintenance: '2026-07-01',
-        modelType: 'Iso VP'
-    }
-};
+const MachineContext = createContext(null);
 
 /**
- * MachineProvider manages the global state of the scanned machine.
- * It integrates PWA session-persistence to keep the context secure against network drops.
+ * MachineContext Provider.
+ * Connects the frontend to the real FastAPI asset management endpoints:
+ * - GET /v1/machines
+ * - GET /v1/machines/{machine_id}
+ * - GET /v1/machines/{machine_id}/manuals
+ * Integrates sessionStorage caching for robust, offline-first industrial operations.
  */
 export function MachineProvider({ children }) {
+    const [fleet, setFleet] = useState([]);
     const [activeMachine, setActiveMachine] = useState(null);
+    const [activeManuals, setActiveManuals] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // Restore state from sessionStorage (resilience for rugged devices on browser reload)
+    // Read the environment variable, fallback to default port 8000
+    const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000';
+
+    // Load cached assets on mount to support instant app loading under flaky Wi-Fi
     useEffect(() => {
-        const savedMachineId = sessionStorage.getItem('arol_active_machine_id');
-        if (savedMachineId && MOCK_MACHINES_DB[savedMachineId]) {
-            setActiveMachine(MOCK_MACHINES_DB[savedMachineId]);
+        try {
+            const cachedFleet = sessionStorage.getItem('arol_cached_fleet');
+            if (cachedFleet) {
+                setFleet(JSON.parse(cachedFleet));
+            }
+
+            const cachedActiveMachine = sessionStorage.getItem('arol_active_machine');
+            const cachedActiveManuals = sessionStorage.getItem('arol_active_manuals');
+            if (cachedActiveMachine) {
+                setActiveMachine(JSON.parse(cachedActiveMachine));
+            }
+            if (cachedActiveManuals) {
+                setActiveManuals(JSON.parse(cachedActiveManuals));
+            }
+        } catch (e) {
+            console.warn('Unable to load cached industrial assets from sessionStorage:', e);
         }
     }, []);
 
     /**
-     * Executes QR scan resolution.
-     * Feeds machine context into the ecosystem.
-     * @param {string} machineId - Extracted ID from QR scan route (/machine/:id)
+     * Fetches the entire machine park from the backend.
+     * Overwrites local cache on success; falls back to cache on failure.
      */
-    const scanMachine = async (machineId) => {
+    const fetchFleet = useCallback(async () => {
         setLoading(true);
         setError(null);
-
         try {
-            // TODO: REPLACE WITH REAL API CALL
-            // Simulate API response delay (DoD Phase 0/1 compliance)
-            await new Promise((resolve) => setTimeout(resolve, 600));
-
-            const machineData = MOCK_MACHINES_DB[machineId];
-            if (machineData) {
-                setActiveMachine(machineData);
-                sessionStorage.setItem('arol_active_machine_id', machineId);
-            } else {
-                throw new Error(`Machine with ID ${machineId} not found in AROL Fleet.`);
+            const response = await fetch(`${API_BASE_URL}/v1/machines`);
+            if (!response.ok) {
+                throw new Error(`HTTP Error: ${response.status}`);
             }
+            const data = await response.json();
+            setFleet(data);
+            sessionStorage.setItem('arol_cached_fleet', JSON.stringify(data));
         } catch (err) {
-            setError(err.message || 'Error scanning machine.');
-            setActiveMachine(null);
-            sessionStorage.removeItem('arol_active_machine_id');
+            console.error('AROL Fleet Fetch Error:', err);
+            const cachedFleet = sessionStorage.getItem('arol_cached_fleet');
+            if (cachedFleet) {
+                setFleet(JSON.parse(cachedFleet));
+                setError('Working offline. Displaying cached fleet data.');
+            } else {
+                setError('Unable to fetch AROL machinery fleet. Check factory network.');
+            }
         } finally {
             setLoading(false);
         }
-    };
+    }, [API_BASE_URL]);
 
     /**
-     * Clears the current machine context, resetting the app to fleet view or landing scanner.
+     * Resolves a machine ID after a QR Scan.
+     * Downloads machine metadata and associated technical manuals in parallel.
      */
-    const clearMachine = () => {
-        setActiveMachine(null);
+    const scanMachine = useCallback(async (id) => {
+        if (!id) return;
+        setLoading(true);
         setError(null);
-        sessionStorage.removeItem('arol_active_machine_id');
-    };
+        try {
+            // Parallel fetch execution to optimize latency and bandwidth
+            const [machineRes, manualsRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/v1/machines/${id}`),
+                fetch(`${API_BASE_URL}/v1/machines/${id}/manuals`)
+            ]);
+
+            if (!machineRes.ok) {
+                if (machineRes.status === 404) {
+                    throw new Error(`Machine ID "${id}" is not registered in the AROL database.`);
+                }
+                throw new Error(`Failed to resolve machine. Status: ${machineRes.status}`);
+            }
+
+            const machineData = await machineRes.json();
+            let manualsData = [];
+
+            if (manualsRes.ok) {
+                manualsData = await manualsRes.json();
+            }
+
+            // Update state and persistence layer
+            setActiveMachine(machineData);
+            setActiveManuals(manualsData);
+            sessionStorage.setItem('arol_active_machine', JSON.stringify(machineData));
+            sessionStorage.setItem('arol_active_manuals', JSON.stringify(manualsData));
+        } catch (err) {
+            console.error(`AROL QR Scan Error for ID ${id}:`, err);
+
+            const cachedActiveMachine = sessionStorage.getItem('arol_active_machine');
+            const cachedActiveManuals = sessionStorage.getItem('arol_active_manuals');
+
+            if (cachedActiveMachine && JSON.parse(cachedActiveMachine).id === id) {
+                setActiveMachine(JSON.parse(cachedActiveMachine));
+                if (cachedActiveManuals) {
+                    setActiveManuals(JSON.parse(cachedActiveManuals));
+                }
+                setError('Working offline. Displaying cached machine profile.');
+            } else {
+                setError(err.message || 'Connection failure. Unable to resolve scanned asset.');
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [API_BASE_URL]);
 
     /**
-     * Updates the status of the current machine dynamically.
-     * Highly useful for real-time IoT events and alarms fetched via SSE/WebSockets.
-     * @param {string} newStatus - 'Operativo', 'In Allarme', or 'In Manutenzione'
+     * Clears the current machine session (Logout / Reset Scan)
      */
-    const updateMachineStatus = (newStatus) => {
-        setActiveMachine((prev) => {
-            if (!prev) return null;
-            return {
-                ...prev,
-                status: newStatus
-            };
-        });
-    };
+    const clearMachine = useCallback(() => {
+        setActiveMachine(null);
+        setActiveManuals([]);
+        sessionStorage.removeItem('arol_active_machine');
+        sessionStorage.removeItem('arol_active_manuals');
+    }, []);
+
+    const isScanned = !!activeMachine;
 
     return (
-        <MachineContext.Provider
-            value={{
-                activeMachine,
-                loading,
-                error,
-                scanMachine,
-                clearMachine,
-                updateMachineStatus,
-                isScanned: !!activeMachine
-            }}
-        >
+        <MachineContext.Provider value={{
+            fleet,
+            activeMachine,
+            activeManuals,
+            loading,
+            error,
+            fetchFleet,
+            scanMachine,
+            clearMachine,
+            isScanned
+        }}>
             {children}
         </MachineContext.Provider>
     );
