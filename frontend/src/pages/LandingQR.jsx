@@ -32,14 +32,20 @@ export default function LandingQR({ machineIdFromRoute, onScanSuccess, onNavigat
     }, [resolvedId]);
 
     // Handle successful scan routing transition
+    // Guard: only navigate if the resolved activeMachine actually matches the
+    // ID we requested — prevents a stale Context value (e.g. from a previous
+    // session) from immediately redirecting to the wrong machine.
     useEffect(() => {
-        if (activeMachine && !loading && !error) {
-            if (onScanSuccess) {
-                // Triggers parent transition to ChatWorkspace
+        if (activeMachine && !loading && !error && resolvedId) {
+            const idMatches =
+                activeMachine.id?.toString() === resolvedId.toString() ||
+                parseInt(activeMachine.id, 10) === parseInt(resolvedId, 10);
+
+            if (idMatches && onScanSuccess) {
                 onScanSuccess(activeMachine.id);
             }
         }
-    }, [activeMachine, loading, error]);
+    }, [activeMachine, loading, error, resolvedId]);
 
     const handleManualSubmit = (e) => {
         e.preventDefault();

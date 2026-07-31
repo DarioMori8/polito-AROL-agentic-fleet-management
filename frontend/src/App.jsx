@@ -5,7 +5,7 @@ import LandingQR from './pages/LandingQR';
 import ChatWorkspace from './pages/ChatWorkspace';
 import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw } from 'lucide-react';
 import './styles/App.css';
-import useChatApi from './hooks/useChatApi';
+import useChatStream from './hooks/useChatStream';
 
 // TO BE MOVED IN SEPARATE FILE
 /**
@@ -25,7 +25,7 @@ function FleetView() {
   }, [fetchFleet]);
 
   // Status mappings: 'online' -> Operating, others -> In Alarm / Under Maintenance
-  const filteredFleet = fleetMachines.filter(m => {
+  const filteredFleet = fleet.filter(m => {
     const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.includes(searchQuery);
     if (activeFilter === 'all') return matchesSearch;
     if (activeFilter === 'ok') return matchesSearch && (m.status === 'online');
@@ -287,7 +287,7 @@ function WorkspaceWrapper() {
   return (
     <ChatWorkspace
       messages={messages}
-      isLoading={isStreaming}
+      isLoading={isStreaming && messages[messages.length - 1]?.status === 'sending' && messages[messages.length - 1]?.text === ''}
       onSendMessage={handleSendMessage}
       onSuggestionClick={handleSuggestionClick}
       onBackClick={handleBackToFleet}

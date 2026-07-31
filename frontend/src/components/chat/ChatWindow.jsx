@@ -94,7 +94,9 @@ export default function ChatWindow({
             {/* 2. CONVERSATION FEED - Scrollable area for messages */}
             <main className="chat-messages-viewport" ref={scrollContainerRef}>
                 <div className="messages-scroll-area">
-                    {messages.map((msg) => (
+                    {messages
+                        .filter((msg) => !(msg.status === 'sending' && msg.text === ''))
+                        .map((msg) => (
                         <ChatBubble
                             key={msg.id}
                             message={msg}
