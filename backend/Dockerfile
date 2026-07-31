@@ -7,6 +7,8 @@ WORKDIR /app
 # Copy only requirements first (see explanation below on layer caching)
 COPY requirements.txt .
 
+COPY --from=contracts . /shared/contracts   
+
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 

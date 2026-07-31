@@ -5,8 +5,7 @@ backoff==2.2.1
 certifi==2026.6.17
 charset-normalizer==3.4.9
 click==8.4.2
--e git+https://github.com/DarioMori8/polito-AROL-agentic-fleet-management.git@374d728bfe86afe62dfcf1566478b3833c762fbb#egg=contracts&subdirectory=shared/contracts
-distro==1.9.0
+-e ../shared/contracts
 fastapi==0.139.2
 googleapis-common-protos==1.75.0
 h11==0.16.0
