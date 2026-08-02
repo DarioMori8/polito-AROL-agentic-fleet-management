@@ -7,7 +7,7 @@ const MachineContext = createContext(null);
  * Handles single-digit string numbers ("2"), padded string numbers ("002"),
  * integers (2), and alphanumeric codes securely.
  */
-const isMatchingId = (idA, idB) => {
+export const isMatchingId = (idA, idB) => {
     if (idA === undefined || idA === null || idB === undefined || idB === null) return false;
 
     const strA = idA.toString().trim();
@@ -139,7 +139,7 @@ export function MachineProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, [API_BASE_URL]);
+    }, [API_BASE_URL, USE_MOCK]);
 
     /**
      * Resolves a machine ID after a QR Scan.
@@ -159,7 +159,12 @@ export function MachineProvider({ children }) {
         // Mock mode
         if (USE_MOCK) {
             await new Promise(resolve => setTimeout(resolve, 500));
-            const machine = MOCK_FLEET.find(m => isMatchingId(m.id, id)) || MOCK_FLEET;
+            const machine = MOCK_FLEET.find(m => isMatchingId(m.id, id));
+            if (!machine) {
+                setError(`Machine ID "${id}" is not registered in the AROL mock fleet.`);
+                setLoading(false);
+                return;
+            }
             const manuals = MOCK_MANUALS[machine.id] || [];
 
             setActiveMachine(machine);

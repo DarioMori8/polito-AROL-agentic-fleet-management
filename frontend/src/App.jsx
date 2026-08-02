@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router';
-import { MachineProvider, useMachine } from './context/MachineContext';
+import { MachineProvider, useMachine, isMatchingId } from './context/MachineContext';
 import LandingQR from './pages/LandingQR';
 import ChatWorkspace from './pages/ChatWorkspace';
-import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw } from 'lucide-react';
+import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw, AlertTriangle } from 'lucide-react';
 import './styles/App.css';
 import useChatStream from './hooks/useChatStream';
 
@@ -190,7 +190,7 @@ function WorkspaceWrapper() {
 
   // Welcome message initialization
   useEffect(() => {
-    if (activeMachine && activeMachine.id === id) {
+    if (activeMachine && isMatchingId(activeMachine.id, id)) {
       setMessages([
         {
           id: 'welcome',

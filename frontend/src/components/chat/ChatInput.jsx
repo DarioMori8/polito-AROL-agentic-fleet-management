@@ -93,7 +93,7 @@ export default function ChatInput({
     };
 
     const handleFileChange = (e) => {
-        const file = e.target.files;
+        const file = e.target.files?.[0];
         if (file) {
             setAttachment(file);
             if (onAttachmentSelect) {
