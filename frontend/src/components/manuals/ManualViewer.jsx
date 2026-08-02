@@ -128,7 +128,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
             // If our current doc is not in the list, set the first available manual
             const docExists = manualsList.some(m => m.filename === activeDocName);
             if (!docExists) {
-                setActiveDocName(manualsList.filename);
+                setActiveDocName(manualsList[0].filename);
                 setCurrentPage(1);
             }
         }
@@ -208,7 +208,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
 
     // Document Navigation
     const handleNextPage = () => {
-        if (currentPage < activeDoc.totalPages) {
+        if (currentPage < totalPagesCount) {
             setCurrentPage((prev) => prev + 1);
         }
     };
@@ -348,13 +348,13 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                     <div className="page-counter-input-row">
                         <span className="current-page-tag">Page {currentPage}</span>
                         <span className="divider-slash">/</span>
-                        <span className="total-pages-tag">{activeDoc.totalPages}</span>
+                        <span className="total-pages-tag">{totalPagesCount}</span>
                     </div>
 
                     <button
                         className="toolbar-nav-btn"
                         onClick={handleNextPage}
-                        disabled={currentPage >= activeDoc.totalPages}
+                        disabled={currentPage >= totalPagesCount}
                         aria-label="Next Page"
                     >
                         <ChevronRight size={20} />
@@ -437,7 +437,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                     <div className="blueprint-paper-sheet">
                         {/* Header of technical documentation page */}
                         <div className="sheet-top-header">
-                            <span className="sheet-doc-title">{activeDoc.title}</span>
+                            <span className="sheet-doc-title">{activeManualRecord?.title}</span>
                             <span className="sheet-section-tag">{pageData.section}</span>
                         </div>
 

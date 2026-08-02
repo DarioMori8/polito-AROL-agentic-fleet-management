@@ -18,6 +18,7 @@ export default function useChatStream() {
     const abortControllerRef = useRef(null);
 
     const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000';
+    const USE_MOCK = import.meta.env?.VITE_USE_MOCK === 'true';
 
     const clearStreamError = useCallback(() => setStreamError(null), []);
 
@@ -58,6 +59,73 @@ export default function useChatStream() {
         setIsStreaming(true);
         setStreamError(null);
 
+        // Streaming simulation for standalone tests
+        if (USE_MOCK) {
+            // 1. Simulate server reasoning delay
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            // 2. Mock response texts matching scanned machine queries
+            const responseText = `Regarding your inquiry on machine ID ${machineId}, the anchoring torque specs must be tightly configured. As outlined in the technical manual, baseplate stabilization requires M16 steel rods tightened to exactly **120.0 Nm** on cured concrete [4]. Additionally, if you are experiencing excessive vibration on the capping head, please verify the roller bearings clearance which must stay between **0.05 mm and 0.12 mm** [1].`;
+
+            // Split text into small word tokens to simulate active LLM streaming
+            const tokens = responseText.split(/(\s+)/);
+            let currentIndex = 0;
+
+            const streamInterval = setInterval(() => {
+                if (currentIndex < tokens.length) {
+                    const nextChunk = tokens[currentIndex];
+                    if (onToken) onToken(nextChunk);
+                    currentIndex++;
+                } else {
+                    clearInterval(streamInterval);
+
+                    // 3. Emit Mock Citations once streaming is finalized
+                    const mockCitations = [
+                        {
+                            id: "cit-1",
+                            doc: "Manuale_Euro_VP_Manutenzione.pdf",
+                            page: 24,
+                            snippet: "Routine inspection and lubrication of the idle rollers on the Euro VP capping head must be conducted every 500 operating hours. Vibration alarms can be prevented by maintaining certified baseplate anchoring."
+                        },
+                        {
+                            id: "cit-2",
+                            doc: "Specifiche_Ancoraggio_AROL.pdf",
+                            page: 15,
+                            snippet: "Heavy duty anchoring requires M16 threaded rods, class 8.8 steel, tightened with a torque wrench to 120.0 Nm (±5 Nm tolerance) inside cured concrete of min 25 MPa."
+                        }
+                    ];
+
+                    const finalMessage = {
+                        id: `ai-${Date.now()}`,
+                        sender: 'assistant',
+                        text: responseText,
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        status: 'sent',
+                        citations: mockCitations.map((cit, idx) => ({
+                            id: `${cit.doc}-${cit.page}-${idx}`,
+                            docName: cit.doc,
+                            page: cit.page,
+                            snippet: cit.snippet
+                        })),
+                        metadata: { confidence: 0.94, needsEscalation: false, sessionId: "mock-session-12345" }
+                    };
+
+                    setIsStreaming(false);
+                    if (onComplete) onComplete(finalMessage);
+                }
+            }, 45); // Smooth streaming speed (~45ms per token block)
+
+            // Store interval ref on AbortController to allow user to interrupt mock stream
+            abortControllerRef.current = {
+                abort: () => {
+                    clearInterval(streamInterval);
+                    setIsStreaming(false);
+                }
+            };
+            return;
+        }
+
+        // Real backend streaming
         // PERSISTENCE: Check if there is an active session_id in sessionStorage for this machine
         const sessionKey = `arol_session_id_${machineId}`;
         const savedSessionId = sessionStorage.getItem(sessionKey) || null;

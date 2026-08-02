@@ -29,17 +29,23 @@ export default function LandingQR({ machineIdFromRoute, onScanSuccess, onNavigat
         if (resolvedId) {
             scanMachine(resolvedId);
         }
-    }, [resolvedId]);
+    }, [resolvedId, scanMachine]);
 
     // Handle successful scan routing transition
+    // Guard: only navigate if the resolved activeMachine actually matches the
+    // ID we requested — prevents a stale Context value (e.g. from a previous
+    // session) from immediately redirecting to the wrong machine.
     useEffect(() => {
-        if (activeMachine && !loading && !error) {
-            if (onScanSuccess) {
-                // Triggers parent transition to ChatWorkspace
+        if (activeMachine && !loading && !error && resolvedId) {
+            const idMatches =
+                activeMachine.id?.toString() === resolvedId.toString() ||
+                parseInt(activeMachine.id, 10) === parseInt(resolvedId, 10);
+
+            if (idMatches && onScanSuccess) {
                 onScanSuccess(activeMachine.id);
             }
         }
-    }, [activeMachine, loading, error]);
+    }, [activeMachine, loading, error, resolvedId, onScanSuccess]);
 
     const handleManualSubmit = (e) => {
         e.preventDefault();
@@ -114,12 +120,12 @@ export default function LandingQR({ machineIdFromRoute, onScanSuccess, onNavigat
                                 </div>
                             ) : (
                                 <form onSubmit={handleManualSubmit} className="manual-input-form">
-                                    <label htmlFor="machine-id-input" className="form-label">
+                                    <label htmlFor="machine-id-error-input" className="form-label">
                                         Digita il Codice Identificativo (ID)
                                     </label>
                                     <div className="form-input-row">
                                         <input
-                                            id="machine-id-input"
+                                            id="machine-id-error-input"
                                             type="text"
                                             placeholder="Es. 001, 002, 003"
                                             value={localMachineId}

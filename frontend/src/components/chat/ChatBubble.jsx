@@ -20,7 +20,16 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
     // Check if the message is from the user
     const isUser = sender === 'user';
 
-    // Parser for bullet lists for sequential maintenance instructions
+    // Inline parser: converts **text** → <strong>text</strong>
+    const parseBold = (text) => {
+        const parts = text.split(/\*\*(.+?)\*\*/g);
+        if (parts.length === 1) return text; // No bold syntax, return as-is
+        return parts.map((part, i) =>
+            i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+        );
+    };
+
+    // Parser for bullet lists and inline markdown for sequential maintenance instructions
     const renderContent = (contentString) => {
         if (!contentString) return null;
         const lines = contentString.split('\n');
@@ -32,7 +41,7 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
             if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                 currentList.push(
                     <li key={`li-${index}`} style={{ marginBottom: '4px' }}>
-                        {trimmed.substring(2)}
+                        {parseBold(trimmed.substring(2))}
                     </li>
                 );
             } else {
@@ -45,7 +54,7 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
                     currentList = [];
                 }
                 if (trimmed) {
-                    jsxElements.push(<p key={`p-${index}`} style={{ margin: '0 0 8px 0', lineHeight: '1.5' }}>{trimmed}</p>);
+                    jsxElements.push(<p key={`p-${index}`} style={{ margin: '0 0 8px 0', lineHeight: '1.5' }}>{parseBold(trimmed)}</p>);
                 }
             }
         });
@@ -59,6 +68,7 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
         }
         return jsxElements;
     };
+
 
     // Rendering the chat bubble
     return (
@@ -90,7 +100,7 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
                     <div className="bubble-footer">
                         <span>{timestamp}</span>
                         {isUser && status === 'sent' && <Check size={12} style={{ color: 'rgba(255, 255, 255, 0.9)' }} />}
-                        {!isUser && metadata.confidence && (
+                        {!isUser && metadata?.confidence && (
                             <span className="confidence-badge">
                                 Verified ({Math.round(metadata.confidence * 100)}%)
                             </span>

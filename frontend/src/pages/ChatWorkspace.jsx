@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, LineChart, BookOpen, RotateCcw } from 'lucide-react';
+import { MessageSquare, BookOpen, RotateCcw } from 'lucide-react';
 import { useMachine } from '../context/MachineContext';
 import ChatWindow from '../components/chat/ChatWindow';
 import ManualViewer from '../components/manuals/ManualViewer';
@@ -27,7 +27,7 @@ export default function ChatWorkspace({
     const [selectedCitation, setSelectedCitation] = useState(null);
 
     // Tablet/Desktop Split-Screen state: true = split, false = tabbed
-    const [isTabletLayout, setIsTabletLayout] = useState(window.innerWidth >= 768);
+    const [isTabletLayout, setIsTabletLayout] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
 
     // Track window resizing to dynamically toggle split-screen rugged views
     useEffect(() => {
