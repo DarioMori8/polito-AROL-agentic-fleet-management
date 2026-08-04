@@ -1,10 +1,11 @@
 import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.models.chat import ChatRequest, ChatResponse
+from app.models.chat import ChatRequest, ChatResponse, ConversationHistory
 
+# ... router già esistente ...
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 
@@ -46,3 +47,24 @@ async def chat_stream_endpoint(payload: ChatRequest, request:Request) -> Streami
             "X-Accel-Buffering": "no",  # disables proxy buffering (nginx)
         },
     )
+
+
+
+
+@router.get("/conversations/{session_id}/messages", response_model=ConversationHistory)
+async def get_conversation_history(
+    session_id: str,
+    request: Request,
+) -> ConversationHistory:
+    orchestrator = request.app.state.orchestrator
+
+    # (auth will slot in here later: "does the caller own this thread?" —
+    #  a guard between receiving the id and reading the data, touching neither.)
+
+    history = await orchestrator.get_history(session_id)
+    if history is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Conversation '{session_id}' not found",
+        )
+    return history

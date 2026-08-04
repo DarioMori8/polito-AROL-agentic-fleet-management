@@ -18,7 +18,9 @@ the answer over Server-Sent Events (see the API section), and **durable
 checkpointing** — the graph is compiled with an `AsyncSqliteSaver` so
 that turns sharing a `session_id` accumulate into one conversation, and
 that conversation survives a process restart because the state is written
-to a SQLite file on disk rather than kept in RAM.
+to a SQLite file on disk rather than kept in RAM.A **conversation
+history endpoint** then reads any past conversation back from that
+durable store for re-display.
 ```
 Frontend (simulated via Swagger UI / curl -N)
     → Backend API (/v1/chat  or  /v1/chat/stream)
@@ -38,7 +40,7 @@ backend/
 │   ├── config.py                  # Settings loaded from .env (Pydantic Settings)
 │   ├── api/
 │   │   └── v1/
-│   │       └── chat.py            # POST /v1/chat and POST /v1/chat/stream — delegate to the orchestrator
+│   │       └── chat.py            # POST /v1/chat, POST /v1 /chat/stream, GET /v1/conversations/{id}/messages — delegate to the orchestrator
 │   ├── orchestrator/
 │   │   ├── __init__.py
 │   │   ├── base.py                # Orchestrator ABC (interface/implementation decoupling)
@@ -52,7 +54,7 @@ backend/
 │   |    └── chat.py                # ChatRequest / ChatResponse (endpoint contract)
 |   └── resources/
 |           |── repository.py
-|           |── router.py           #GET /v1/machines/{machine_id}, GET /v1/machines/{machine_id}/manuals, GET /v1/manauls/{manual_id} and GET /v1/machines
+|           |── router.py            #GET /v1/machines, GET /v1/machines/{machine_id}, GET /v1/machines/{machine_id}/manuals, GET /v1/manuals/{manual_id}
 |           └── schemas.py
 |
 ├── requirements.txt
@@ -87,11 +89,14 @@ them directly from the process environment, not from the pydantic
 `settings` object.
 
 ### `app/api/v1/chat.py`
+### `app/api/v1/chat.py`
 The HTTP-facing layer. Validates the incoming `ChatRequest` and
 delegates entirely to the orchestrator — `handle(...)` for the
-non-streaming endpoint, `handle_stream(...)` for the streaming one. It
-serializes the orchestrator's semantic events into the SSE wire format
-(`event:`/`data:` frames), but contains no business logic and no
+non-streaming endpoint, `handle_stream(...)` for the streaming one — and
+serializes the streaming orchestrator's semantic events into the SSE
+wire format (`event:`/`data:` frames). It also exposes the read-only
+history endpoint, which calls `orchestrator.get_history(...)` and turns
+a `None` result into a `404`. It contains no business logic and no
 networking code towards the agents, and does not know which agents
 exist.
 
@@ -141,6 +146,16 @@ exist.
   `agent` node at call time rather than seeded into state, so it never
   accumulates across turns as `add_messages` merges each new turn onto the
   loaded history.
+  Beyond the two chat entry points, the orchestrator exposes
+  `get_history(session_id)`, which reads the persisted state via
+  `aget_state` and **projects** it into a client-facing shape: it filters
+  out the mechanical messages (the empty tool-call `AIMessage`, the raw
+  `ToolMessage`), keeps only the human-visible turns as `user`/`assistant`
+  entries, strips the internal `[machine_id: ...]` routing tag from user
+  content, and re-attaches each turn's citations (which live in the tool
+  artifact, not the answer) to that turn's assistant message. It returns
+  `None` when the thread has no saved state, which the endpoint maps to a
+  `404`.
 
 ### `app/clients/`
 One client class per agent, each implementing a shared abstract
@@ -164,17 +179,19 @@ defines `ChatRequest`/`ChatResponse`, the contract for the chat
 endpoints (not shared with the agents project, since it's
 backend/frontend-specific). `ChatRequest.session_id` is optional —
 absent on the first turn, echoed back by the client on subsequent turns
-to continue the same conversation.
+to continue the same conversation. It also defines the history contract:
+`ConversationHistory` (a `session_id` plus a list of `HistoryMessage`),
+`HistoryMessage` (a `role`, `content`, and always-present `citations`),
+and the `MessageRole` enum (`user` / `assistant`).
 
 ## API
 
-The backend exposes three endpoints: a health check, a non-streaming
-chat endpoint, and a streaming chat endpoint. The two chat endpoints
-accept the **same** request body and delegate entirely to the
-orchestrator; they differ only in how the answer is delivered — one JSON
-block versus token-by-token. In both cases a single HTTP request carries
-the user's question in and brings the assistant's answer back out; there
-is no separate endpoint to "fetch" the reply afterwards.
+The backend exposes chat endpoints (streaming and non-streaming), a
+conversation history endpoint, read-only resource endpoints for machines
+and manuals, and a health check. The two chat endpoints accept the
+**same** request body and delegate entirely to the orchestrator; they
+differ only in how the answer is delivered — one JSON block versus
+token-by-token.
 
 ### `GET /`
 
@@ -214,6 +231,43 @@ SSE.
   "answer": "...",
   "citations": [{ "doc": "manual_1.pdf", "page": 12, "snippet": "..." }],
   "session_id": "3f2c1a9e-8b7d-4e6f-a1c2-9d8e7f6a5b4c"
+}
+```
+
+### `GET /v1/conversations/{session_id}/messages`
+
+Conversation history — re-reads a past conversation from the durable
+checkpointer for re-display (e.g. the frontend reopening a machine's
+chat). Receives a `session_id` in the path and returns that
+conversation's messages, projected for the client: internal mechanics
+(empty tool-call messages, raw tool results) are removed, the
+`[machine_id: ...]` routing tag is stripped from user messages, and each
+answer's citations are attached to it.
+
+**Returns** — `ConversationHistory`:
+
+| Field        | Type                  | Description |
+|--------------|-----------------------|-------------|
+| `session_id` | `str`                 | The conversation id (echoed from the path). |
+| `messages`   | `list[HistoryMessage]`| The projected conversation, in order. |
+
+Each `HistoryMessage` has `role` (`user` / `assistant`), `content`, and
+`citations` (a list of `{ doc, page, snippet }`, always present — empty
+for user messages and for answers with no references).
+
+Responds `404` if no conversation with that id exists (an unknown
+`session_id` has no saved state; there is no such thing as a real
+conversation with zero messages).
+
+```json
+{
+  "session_id": "3f2c1a9e-8b7d-4e6f-a1c2-9d8e7f6a5b4c",
+  "messages": [
+    { "role": "user", "content": "come faccio la manutenzione?", "citations": [] },
+    { "role": "assistant", "content": "Ecco la procedura...", "citations": [
+      { "doc": "manual_1.pdf", "page": 12, "snippet": "..." }
+    ]}
+  ]
 }
 ```
 
@@ -394,9 +448,7 @@ debug print inside `handle()` / `handle_stream()` still works.
   across multiple backend processes; a multi-node deployment would use
   `AsyncPostgresSaver` (out of scope for the thesis demo). Note that in a
   container the file must be on a mounted volume to survive an image
-  rebuild. The next step is a `GET /v1/conversations/{id}/messages`
-  history endpoint, which the checkpointer's `aget_state` makes almost
-  free now that persistence is durable.
+  rebuild. 
 - **Same model used for both the orchestrator and the Manuals Agent**
   (`gpt-oss:20b`) — chosen for simplicity/VRAM-safety on 16GB hardware
   (no model-swapping), at the cost of using a heavier-than-necessary
@@ -409,8 +461,13 @@ debug print inside `handle()` / `handle_stream()` still works.
   was actually correct; relies entirely on the system prompt and the
   model's own judgment. A `confidence`-based check or a separate judge
   step are possible future additions.
-- **No authentication** on the `/v1/chat` and `/v1/chat/stream`
-  endpoints yet.
+- - **No authentication** on any endpoint yet. The history endpoint is
+  structured so an ownership check ("does the caller own this thread?")
+  can slot in between receiving the `session_id` and reading the data,
+  without touching the read or the projection. Binding conversations to
+  an authenticated user (for a "my conversations" list) additionally
+  needs a user→thread_id registry, which the checkpointer does not
+  provide.
 - **Single agent registered** (`search_manuals`). Real multi-agent
   routing (IoT, Orders, Troubleshooting) is the next milestone — each
   new agent needs one client in `app/clients/` and one `@tool` function

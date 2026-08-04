@@ -2,7 +2,7 @@
 from typing import Annotated, TypedDict, AsyncIterator
 import uuid
  
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage, AIMessage
 from langfuse.langchain import CallbackHandler
 from langchain_ollama import ChatOllama
 from langgraph.graph import START, StateGraph
@@ -11,8 +11,10 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from contracts import Citation
+from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, HistoryMessage, MessageRole
+
 from app.config import settings
-from app.models.chat import ChatRequest, ChatResponse
 from app.orchestrator.agent_registry import AGENT_TOOLS
 from app.orchestrator.base import Orchestrator
 SYSTEM_PROMPT = """You are the routing brain of the AROL Customer Platform assistant.
@@ -284,7 +286,61 @@ class LangGraphOrchestrator(Orchestrator):
             yield {"type": "error", "recoverable": False, "message": str(exc)}
             yield {"type": "done", "session_id": session_id}
 
+
+
+    def _project_messages(self, messages: list[BaseMessage]) -> list[HistoryMessage]:
+        projected: list[HistoryMessage] = []
+        pending_citations: list[Citation] = []   # the "drawer": citations seen in this turn,
+                                                    # waiting to be attached to the answer that closes it
+
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                content = msg.content
+          
+                if content.startswith("[machine_id:") and "\n" in content:
+                    content = content.split("\n", 1)[1]
+                projected.append(HistoryMessage(
+                    role=MessageRole.USER,
+                    content=content,
+                    citations=[],
+                ))
+
+            elif isinstance(msg, ToolMessage):
+                # Citations live in the tool artifact, not in the answer.
+                # Stash them; they belong to the assistant message that comes next.
+                if isinstance(msg.artifact, dict):
+                    for c in msg.artifact.get("citations", []):
+                        pending_citations.append(Citation(**c))
+
+            elif isinstance(msg, AIMessage):
+                # An AIMessage with no text content is the "decide to call a tool" step:
+                # pure mechanics, not part of the human-visible conversation. Skip it.
+                if not msg.content:
+                    continue
+                # An AIMessage with text is the turn's final answer: attach the drawer,
+                # then empty it for the next turn.
+                projected.append(HistoryMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=msg.content,
+                    citations=pending_citations,
+                ))
+                pending_citations = []
+
+        return projected
+
     
+    async def get_history(self, session_id: str) -> ConversationHistory | None:
+        config = {"configurable": {"thread_id": session_id}}
+        snapshot = await self._graph.aget_state(config)
+
+        # aget_state on an unknown thread returns an empty snapshot (no messages),
+        # not an error. That's how we detect "conversation does not exist".
+        messages = snapshot.values.get("messages", [])
+        if not messages:
+            return None
+
+        projected = self._project_messages(messages)
+        return ConversationHistory(session_id=session_id, messages=projected)
 
 
 
