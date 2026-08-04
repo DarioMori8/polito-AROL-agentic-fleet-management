@@ -1,5 +1,7 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -11,12 +13,14 @@ class Settings(BaseSettings):
     ORCHESTRATOR_OLLAMA_BASE_URL: str = "http://localhost:11434"
     ORCHESTRATOR_OLLAMA_MODEL: str
     ORCHESTRATOR_MAX_ITERATIONS: int = 5
-
     ORCHESTRATOR_NUM_CTX: int = 4096
+
 
     LANGFUSE_PUBLIC_KEY: str
     LANGFUSE_SECRET_KEY: str
     LANGFUSE_HOST: str = "http://localhost:3000"
+
+    CHECKPOINT_DB_PATH: str = str(Path(__file__).resolve().parent.parent / "data" / "checkpoints.sqlite")
 
 settings = Settings()
 

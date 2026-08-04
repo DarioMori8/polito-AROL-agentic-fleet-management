@@ -10,20 +10,15 @@ is now expressed as a compiled **LangGraph** `StateGraph`. The routing
 decision itself is unchanged (an LLM reading tool descriptions decides
 which agent(s) to call) — what changes is the engine that drives the
 loop, in exchange for built-in tool execution (`ToolNode`), a
-ready-made conditional-routing helper (`tools_condition`), and loop, in exchange for built-in tool execution (`ToolNode`), a
 ready-made conditional-routing helper (`tools_condition`), and a
 foundation for checkpointing. On top of this iteration, three
 capabilities are now wired in: **Langfuse tracing** (via a module-level
 `CallbackHandler` passed to the graph), **token-by-token streaming** of
-the answer over Server-Sent Events (see the API section), and
-**in-memory checkpointing** — the graph is compiled with a `MemorySaver`
-so that turns sharing a `session_id` accumulate into one conversation.
-This memory currently lives in process RAM (it does not survive a
-restart); swapping in a durable saver (`SqliteSaver`) is the next step.. On
-top of this iteration, two capabilities are now wired in: **Langfuse
-tracing** (via a module-level `CallbackHandler` passed to the graph)
-and **token-by-token streaming** of the answer over Server-Sent Events
-(see the API section).
+the answer over Server-Sent Events (see the API section), and **durable
+checkpointing** — the graph is compiled with an `AsyncSqliteSaver` so
+that turns sharing a `session_id` accumulate into one conversation, and
+that conversation survives a process restart because the state is written
+to a SQLite file on disk rather than kept in RAM.
 ```
 Frontend (simulated via Swagger UI / curl -N)
     → Backend API (/v1/chat  or  /v1/chat/stream)
@@ -70,7 +65,12 @@ backend/
 
 ### `app/main.py`
 Creates the single FastAPI application instance, includes all routers,
-and configures logging.
+and configures logging. Defines the **`lifespan`**: at startup it opens
+the durable checkpointer and compiles the graph (through
+`build_graph()`), wraps it in a `LangGraphOrchestrator`, and places that
+on `app.state`; at shutdown the checkpointer's SQLite connection is
+closed cleanly as the `async with` unwinds. This is why the graph is an
+application resource created at startup, not a module-level global.
 
 ### `app/config.py`
 Centralizes all configuration using `pydantic-settings`. Two
@@ -127,15 +127,20 @@ exist.
   not full reason/act cycles — computed as
   `ORCHESTRATOR_MAX_ITERATIONS * 2 + 1`, an approximation to re-tune
   with real testing.
-  The graph is compiled with a checkpointer (`MemorySaver`), so each
-  invocation is keyed by a `thread_id` passed in
+  The graph is compiled with a durable checkpointer (`AsyncSqliteSaver`),
+  so each invocation is keyed by a `thread_id` passed in
   `config["configurable"]`. Both entry points derive it as
   `request.session_id or str(uuid4())` — a missing id means "new
   conversation" (generate one), a present id means "resume that thread".
-  The persisted state holds conversation messages only: the system
-  prompt is prepended inside the `agent` node at call time rather than
-  seeded into state, so it never accumulates across turns as
-  `add_messages` merges each new turn onto the loaded history.
+  Because the saver holds an open connection to a file, the graph is no
+  longer compiled at module load: it is built inside a FastAPI `lifespan`
+  (via `build_graph()`, an async context manager that opens the saver and
+  yields the compiled graph), and the resulting orchestrator is stored on
+  `app.state`, from which the endpoints read it. The persisted state holds
+  conversation messages only: the system prompt is prepended inside the
+  `agent` node at call time rather than seeded into state, so it never
+  accumulates across turns as `add_messages` merges each new turn onto the
+  loaded history.
 
 ### `app/clients/`
 One client class per agent, each implementing a shared abstract
@@ -184,45 +189,6 @@ orchestrator graph to completion (`graph.ainvoke`), and returns the
 assembled answer as a single JSON object. This is the endpoint to use
 from Swagger UI, automated tests, or any client that does not consume
 SSE.
-
-### `GET /v1/machines`
-
-Fleet list. Takes no input. Returns every machine in the customer's
-park.
-
-**Returns**: a JSON array of machine objects, each with `id`, `name`,
-`model`, `serial_number`, 
-`status` (`online` / `offline` / `maintenance`) and `location` . An empty array is a
-valid response (no machines catalogued).
-
-### `GET /v1/machines/{machine_id}`
-
-Machine detail — the landing target of the QR-scan use case. Receives a
-machine id in the path and returns that single machine's record.
-
-**Returns**: one machine object (same fields as above). Responds `404`
-if no machine with that id exists. The id space is shared with the chat
-endpoint's `machine_id`, so the same identifier addresses a machine
-everywhere in the system.
-
-
-### `GET /v1/machines/{machine_id}/manuals`
-
-Fleet list. Takes no input. Returns all manuals of that machine.
-
-**Returns**: a JSON array of manual objects, each with `id`, `machine_id`,
-`title`, `filename`, `language`, `page_count`
-and `url`. An empty array is a
-valid response (no machines catalogued).
-
-### `GET /v1/manuals/{manual_id}`
-
-Manual detail, receives a
-manual id in the path and returns that single manual's record.
-
-**Returns**: one manual object (same fields as above). Responds `404`
-if no manual with that id exists. 
-
 **Receives** — `ChatRequest`:
 
 | Field        | Type  | Description |
@@ -250,6 +216,45 @@ if no manual with that id exists.
   "session_id": "3f2c1a9e-8b7d-4e6f-a1c2-9d8e7f6a5b4c"
 }
 ```
+
+### `GET /v1/machines`
+
+Fleet list. Takes no input. Returns every machine in the customer's
+park.
+
+**Returns**: a JSON array of machine objects, each with `id`, `name`,
+`model`, `serial_number`, 
+`status` (`online` / `offline` / `maintenance`) and `location` . An empty array is a
+valid response (no machines catalogued).
+
+### `GET /v1/machines/{machine_id}`
+
+Machine detail — the landing target of the QR-scan use case. Receives a
+machine id in the path and returns that single machine's record.
+
+**Returns**: one machine object (same fields as above). Responds `404`
+if no machine with that id exists. The id space is shared with the chat
+endpoint's `machine_id`, so the same identifier addresses a machine
+everywhere in the system.
+
+
+### `GET /v1/machines/{machine_id}/manuals`
+Takes no input. Returns all manuals of that machine.
+
+**Returns**: a JSON array of manual objects, each with `id`, `machine_id`,
+`title`, `filename`, `language`, `page_count`
+and `url`. An empty array is a
+valid response (no machines catalogued).
+
+### `GET /v1/manuals/{manual_id}`
+
+Manual detail, receives a
+manual id in the path and returns that single manual's record.
+
+**Returns**: one manual object (same fields as above). Responds `404`
+if no manual with that id exists. 
+
+
 
 ### `POST /v1/chat/stream`
 
@@ -379,23 +384,25 @@ debug print inside `handle()` / `handle_stream()` still works.
 | `LANGFUSE_PUBLIC_KEY`           | Langfuse public key (bridged into `os.environ`)           | `pk-lf-...`               |
 | `LANGFUSE_SECRET_KEY`           | Langfuse secret key (bridged into `os.environ`)           | `sk-lf-...`               |
 | `LANGFUSE_HOST`                 | Base URL of the self-hosted Langfuse instance             | `http://localhost:3000`  |
+| `CHECKPOINT_DB_PATH`            | Path to the SQLite file holding conversation checkpoints  | `data/checkpoints.sqlite` |
 
 ## Known limitations / next steps
 
-- **Checkpointing is in-memory only** — the graph is compiled with a
-  `MemorySaver`, so a conversation is remembered across turns *within a
-  running process*, but all conversations are lost on restart (the store
-  is a dict in process RAM). Swapping in `AsyncSqliteSaver` for durable,
-  restart-surviving persistence is the next step, followed by a
-  `GET /v1/conversations/{id}/messages` history endpoint (which the
-  checkpointer's `aget_state` makes almost free once persistence is
-  durable). the Manuals Agent**
+- **Checkpointing is durable but single-node** — the graph is compiled
+  with an `AsyncSqliteSaver` writing to a SQLite file, so conversations
+  survive a process restart. It is a local file, so it is not shared
+  across multiple backend processes; a multi-node deployment would use
+  `AsyncPostgresSaver` (out of scope for the thesis demo). Note that in a
+  container the file must be on a mounted volume to survive an image
+  rebuild. The next step is a `GET /v1/conversations/{id}/messages`
+  history endpoint, which the checkpointer's `aget_state` makes almost
+  free now that persistence is durable.
+- **Same model used for both the orchestrator and the Manuals Agent**
   (`gpt-oss:20b`) — chosen for simplicity/VRAM-safety on 16GB hardware
   (no model-swapping), at the cost of using a heavier-than-necessary
   model for the lightweight routing task. Not yet benchmarked against a
-  smaller dedicated orchestrator model on equal footing (same test,
-  same model choice as the pre-migration baseline) to isolate whether
-  perceived slowdowns come from the model choice or the framework
+  smaller dedicated orchestrator model on equal footing to isolate
+  whether perceived slowdowns come from the model choice or the framework
   itself.
 - **No automated evaluation of routing quality** — nothing currently
   measures whether the LLM's decision to stop (or keep calling tools)

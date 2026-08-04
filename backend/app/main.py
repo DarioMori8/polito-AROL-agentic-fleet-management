@@ -1,9 +1,13 @@
 import logging
+from contextlib import asynccontextmanager
+
 
 from fastapi import FastAPI
 from app.api.v1.chat import router as chat_router
 from app.resources.router import router as resources_router
 from fastapi.middleware.cors import CORSMiddleware
+from app.orchestrator.orchestrator import build_graph, LangGraphOrchestrator
+
 
 
 logging.basicConfig(
@@ -11,7 +15,17 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- startup: runs once, before the app serves any request ---
+    async with build_graph() as graph:
+        app.state.orchestrator = LangGraphOrchestrator(graph)
+        yield
+    # --- shutdown: runs once, after the app stops serving requests ---
+    # exiting the `async with` above closes the SQLite connection cleanly
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 app.add_middleware(

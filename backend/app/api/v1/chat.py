@@ -1,19 +1,18 @@
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.models.chat import ChatRequest, ChatResponse
-from app.orchestrator.orchestrator import LangGraphOrchestrator
 
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 
-orchestrator = LangGraphOrchestrator()
  
  
 @router.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
+async def chat_endpoint(payload: ChatRequest, request: Request) -> ChatResponse:
+    orchestrator= request.app.state.orchestrator
     return await orchestrator.handle(payload)
 
 
@@ -32,8 +31,9 @@ def _sse_format(event: dict) -> str:
 
 
 @router.post("/chat/stream")
-async def chat_stream_endpoint(payload: ChatRequest) -> StreamingResponse:
+async def chat_stream_endpoint(payload: ChatRequest, request:Request) -> StreamingResponse:
     async def event_generator():
+        orchestrator= request.app.state.orchestrator
         async for event in orchestrator.handle_stream(payload):
             yield _sse_format(event)
 

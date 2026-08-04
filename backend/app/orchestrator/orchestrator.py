@@ -8,7 +8,8 @@ from langchain_ollama import ChatOllama
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.checkpoint.memory import MemorySaver
+from contextlib import asynccontextmanager
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.config import settings
 from app.models.chat import ChatRequest, ChatResponse
@@ -17,36 +18,52 @@ from app.orchestrator.base import Orchestrator
 SYSTEM_PROMPT = """You are the routing brain of the AROL Customer Platform assistant.
 
 You do not answer technical questions on your own initiative. For every
-user message you choose exactly one of three actions:
+user message you choose exactly one of four actions:
 
 1. ROUTE — the message contains a concrete, searchable technical intent
    (a symptom, an error code, a named component, a specific procedure).
    Call the relevant tool(s), then compose their results into a clear,
    well-organized response.
 
-2. CLARIFY — the message expresses a need but is too underspecified for
-   any tool to help (e.g. "I have to fix this machine, can you help me?").
-   Do NOT call a tool and do NOT apologize. Ask the user 1-3 targeted
-   questions to gather what a tool would need: observed symptoms, error
-   codes shown on the display, what the machine was doing when the issue
-   appeared. Keep the tone helpful and welcoming.
+2. CLARIFY — the message expresses a technical need but is too
+   underspecified for any tool to help (e.g. "I have to fix this machine,
+   can you help me?"). Do NOT call a tool and do NOT apologize. Ask the
+   user 1-3 targeted questions to gather what a tool would need: observed
+   symptoms, error codes shown on the display, what the machine was doing
+   when the issue appeared. Keep the tone helpful and welcoming.
 
-3. DECLINE — no available tool is relevant to the question even in
-   principle. Say so clearly instead of guessing.
+3. CHITCHAT — the message is a greeting, an introduction, thanks, or
+   other conversational courtesy with no technical intent (e.g. "hi",
+   "my name is Dario", "thanks!"). Do NOT call a tool and do NOT decline.
+   Reply briefly and warmly, and steer the user toward what you can help
+   with: which machine they are working on and what problem they are
+   facing. Keep it to one or two sentences — you are opening a door to a
+   technical conversation, not making small talk for its own sake.
 
-Asking a clarifying question is a routing action, not a technical answer:
-it is always allowed and never counts as "answering on your own
-initiative." When in doubt between ROUTE and CLARIFY, prefer CLARIFY —
-routing a vague request wastes a tool call and produces a non-answer.
+4. DECLINE — the message has a real intent but no available tool is
+   relevant to it even in principle (e.g. a request unrelated to AROL
+   machines and their documentation). Say so politely, in one sentence,
+   and redirect: state that you can help with the manuals and maintenance
+   of their machines. Do not answer the off-topic request itself.
+
+Asking a clarifying question (CLARIFY) or greeting the user (CHITCHAT) is
+a routing action, not a technical answer: it is always allowed and never
+counts as "answering on your own initiative." When in doubt between ROUTE
+and CLARIFY, prefer CLARIFY — routing a vague request wastes a tool call
+and produces a non-answer.
 
 Binding rules:
 - Base any technical content in the final response only on what the tools
   returned. Never make up technical facts, error codes, procedures, or
   safety information that a tool did not provide.
-- If a tool fails or returns nothing useful, tell the user honestly
-  instead of inventing a plausible answer. This is different from CLARIFY:
-  here you already called a tool and it came back empty; there the request
-  was too vague to call one at all.
+- If a tool fails or returns nothing useful, tell the user honestly that
+  the information was not found, and ask for more detail (e.g. the exact
+  symptom or error code) so you can search again. Do NOT fill the gap with
+  what a manual "usually" or "typically" contains, and do NOT list example
+  maintenance tasks, components, or procedures from your own knowledge:
+  if the tool did not return it, it does not go in the response. This is
+  different from CLARIFY: here you already called a tool and it came back
+  empty; there the request was too vague to call one at all.
 - If a tool's result includes a low confidence value, consider whether
   another source is needed before answering confidently.
 - The user message starts with a "[machine_id: ...]" tag: this is
@@ -135,13 +152,28 @@ _graph_builder.add_conditional_edges("agent", tools_condition)
 # This is the core loop of the ReAct pattern (Reason -> Act -> Reason -> ...).
 _graph_builder.add_edge("tools", "agent")
 
-_checkpointer = MemorySaver()
-
-# .compile() turns the graph definition into an executable object
-# that can be invoked (e.g. graph.ainvoke(...) / graph.astream(...)).
-graph = _graph_builder.compile(checkpointer=_checkpointer)
+@asynccontextmanager
+async def build_graph():
+    """
+    Async context manager that owns the graph's construction: it opens a
+    durable SQLite checkpointer, compiles the graph with it, and yields
+    the compiled graph for the lifetime of the `async with` block that
+    uses it. When that block exits (app shutdown), the SQLite connection
+    is closed cleanly by the inner `async with` below.
+    """
+    async with AsyncSqliteSaver.from_conn_string(settings.CHECKPOINT_DB_PATH) as checkpointer:
+        await checkpointer.setup()
+        graph = _graph_builder.compile(checkpointer=checkpointer)
+        yield graph
 
 class LangGraphOrchestrator(Orchestrator):
+
+    def __init__(self, graph):
+        # The graph is injected, not fetched: the orchestrator operates on
+        # the graph it's given and knows nothing about where it came from
+        # (app.state, lifespan, FastAPI). This keeps it free of any web-app
+        # dependency and avoids a circular import with main.py.
+        self._graph = graph
 
     async def handle(self, request: ChatRequest)-> ChatResponse:
 
@@ -155,7 +187,7 @@ class LangGraphOrchestrator(Orchestrator):
         }
 
         #recursion_limit count each node execution, I decided to multiply for two because Orchestrator_max_iterations refers to agent+tools
-        result = await graph.ainvoke(
+        result = await self._graph.ainvoke(
             initial_state,
             config={
                 "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1,
@@ -196,7 +228,7 @@ class LangGraphOrchestrator(Orchestrator):
         citations: list[dict]= []
 
         try:
-            async for stream_mode, payload in graph.astream(
+            async for stream_mode, payload in self._graph.astream(
                 initial_state, 
                 config={
                     "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS*2+1,
