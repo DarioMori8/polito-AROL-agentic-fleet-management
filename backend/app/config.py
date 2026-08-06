@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     LANGFUSE_HOST: str = "http://localhost:3000"
 
     CHECKPOINT_DB_PATH: str = str(Path(__file__).resolve().parent.parent / "data" / "checkpoints.sqlite")
-
+    DOMAIN_DB_PATH: str = str(Path(__file__).resolve().parent.parent / "data" / "domain.sqlite")
 settings = Settings()
 
 

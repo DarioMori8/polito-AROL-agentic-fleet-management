@@ -7,7 +7,8 @@ from app.api.v1.chat import router as chat_router
 from app.resources.router import router as resources_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.orchestrator.orchestrator import build_graph, LangGraphOrchestrator
-
+from app.db.engine import engine, create_db_and_tables
+from app.db.seed import seed_data
 
 
 logging.basicConfig(
@@ -17,12 +18,17 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- startup: runs once, before the app serves any request ---
+
+    # --- startup 
+    await create_db_and_tables()      # domain tables: created only if missing
+    await seed_data()               
+
     async with build_graph() as graph:
         app.state.orchestrator = LangGraphOrchestrator(graph)
         yield
-    # --- shutdown: runs once, after the app stops serving requests ---
-    # exiting the `async with` above closes the SQLite connection cleanly
+    # --- shutdown
+
+    await engine.dispose()            # close pooled DB connections cleanly
 
 
 app = FastAPI(lifespan=lifespan)

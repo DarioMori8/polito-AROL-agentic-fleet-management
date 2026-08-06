@@ -1,8 +1,13 @@
 # resources/repository.py
 from abc import ABC, abstractmethod
 
-from app.resources.schemas import Machine,  MachineStatus, Manual
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.db.models import Machine, Document, DocumentType
+
+
+# --- Interfaces ---
 
 class MachineRepository(ABC):
     @abstractmethod
@@ -11,60 +16,45 @@ class MachineRepository(ABC):
     @abstractmethod
     async def get_machine(self, machine_id: str) -> Machine | None: ...
 
-class ManualRepository(ABC):
+
+class DocumentRepository(ABC):
     @abstractmethod
-    async def list_by_machine(self, machine_id: str)-> list[Manual]:
-        ...
+    async def list_by_machine(
+        self, machine_id: str, document_type: DocumentType | None = None
+    ) -> list[Document]: ...
 
     @abstractmethod
-    async def get_manual(self, manual_id: str)-> Manual | None:
-        ...
-
-# --- Mock data (the first implementation of the interfaces, not throwaway) ---
+    async def get_document(self, document_id: str) -> Document | None: ...
 
 
-_MACHINES: list[Machine] = [
-    Machine(id="1", name="Capping Line Alpha", model="AROL EURO PK",
-            serial_number="AR-EPK-2021-0453", status=MachineStatus.ONLINE,
-            location="Bottling Line 1"),
-    Machine(id="2", name="Capping Line Bravo", model="AROL EQUATORQUE",
-            serial_number="AR-EQT-2022-0817", status=MachineStatus.ONLINE,
-            location="Bottling Line 2"),
-    Machine(id="3", name="Capping Line Charlie", model="AROL EURO VP",
-            serial_number="AR-EVP-2023-0129", status=MachineStatus.MAINTENANCE,
-            location="Bottling Line 3"),
-]
+# --- DB-backed implementations ---
 
+class DbMachineRepository(MachineRepository):
+    def __init__(self, session: AsyncSession):
+        self._session = session
 
-_MANUALS: list[Manual] = [
-    Manual(id="man_1", machine_id="1", title="Use & Maintenance Manual",
-           filename="euro_pk_use_maintenance.pdf", language="en",
-           page_count=142, url="/static/manuals/euro_pk_use_maintenance.pdf"),
-    Manual(id="man_2", machine_id="2", title="Use & Maintenance Manual",
-           filename="manual_1.pdf", language="en",
-           page_count=98, url="/static/manuals/manual_1.pdf"),
-    Manual(id="man_3", machine_id="2", title="Quick Start Guide",
-           filename="equatorque_quickstart.pdf", language="it",
-           page_count=24, url="/static/manuals/equatorque_quickstart.pdf"),
-    Manual(id="man_4", machine_id="3", title="Use & Maintenance Manual",
-           filename="euro_vp_use_maintenance.pdf", language="en",
-           page_count=67, url="/static/manuals/euro_vp_use_maintenance.pdf"),
-]
-
-
-
-
-class InMemoryMachineRepository(MachineRepository):
     async def list_machines(self) -> list[Machine]:
-        return list(_MACHINES)
+        result = await self._session.exec(select(Machine))
+        return list(result.all())
 
     async def get_machine(self, machine_id: str) -> Machine | None:
-        return next((m for m in _MACHINES if m.id == machine_id), None)
-    
+        return await self._session.get(Machine, machine_id)
 
-class InMemoryManualRepository(ManualRepository):
-    async def list_by_machine(self, machine_id: str)-> list[Manual]:
-        return [m for m in _MANUALS if m.machine_id == machine_id]
 
-    async def get_manual(self, manual_id: str)-> Manual|None:
-        return next((m for m in _MANUALS if m.id==manual_id), None)
+class DbDocumentRepository(DocumentRepository):
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    async def list_by_machine(
+        self, machine_id: str, document_type: DocumentType | None = None
+    ) -> list[Document]:
+        statement = select(Document).where(Document.machine_id == machine_id)
+        # Optional type filter: callers wanting only manuals pass
+        # document_type=DocumentType.MANUAL; callers wanting everything omit it.
+        if document_type is not None:
+            statement = statement.where(Document.document_type == document_type)
+        result = await self._session.exec(statement)
+        return list(result.all())
+
+    async def get_document(self, document_id: str) -> Document | None:
+        return await self._session.get(Document, document_id)
