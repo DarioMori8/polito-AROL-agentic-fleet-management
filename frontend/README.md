@@ -180,3 +180,22 @@ location / {
 }
 ```
 This forces Nginx to intercept any deep requests, resolve them, and delegate the UI rendering back to our `index.html` file, where the React routing tree can cleanly resume the session.
+
+---
+
+## 📋 To-Do
+
+Issues identified during streaming chat code review ([`useChatStream.js`](src/hooks/useChatStream.js) + [`App.jsx`](src/App.jsx)):
+
+- [ ] **#1 — Cursore animato durante lo streaming** `🟡 UX`
+  La bolla AI è vuota/invisibile prima che arrivi il primo token dal backend. Aggiungere un cursore lampeggiante (`▍`) in `ChatBubble.jsx` quando `status === 'sending'` e `text === ''`, per dare feedback visivo immediato all'operatore.
+  ```jsx
+  // ChatBubble.jsx
+  const displayText = status === 'sending' ? text + '▍' : text;
+  ```
+
+- [ ] **#2 — Allineamento `id` tra placeholder e `finalMessage`** `🟠 Fragile`
+  Il placeholder AI creato in `App.jsx` ha id `ai-stream-*`, ma il `finalMessage` costruito alla fine dello stream in `useChatStream.js` genera un nuovo id `ai-*`. La sostituzione funziona perché il `prev.map()` cerca il vecchio id, ma la logica è fragile. Riusare l'`aiMessageId` originale anche nel `finalMessage` per rendere il codice più robusto e leggibile.
+
+- [ ] **#3 — Esporre gli eventi `thinking` e `status` all'UI** `🔵 Miglioramento`
+  Gli eventi SSE `thinking` (ragionamento interno del modello) e `status` (es. `"Consulting manuals..."`) vengono ricevuti e parsati correttamente in `useChatStream.js` ma ignorati. Aggiungere callback opzionali `onThinking` e `onStatus` per consentire la visualizzazione di un pannello "Sto pensando..." e di un indicatore del tool in esecuzione, evitando che l'utente percepisca l'app come bloccata durante chiamate lunghe agli agenti.
