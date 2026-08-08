@@ -207,44 +207,61 @@ export default function useChatStream() {
 
                         // Handle event types matching our FastAPI LangGraph orchestrator contract
                         switch (eventType) {
+                            case 'start':
+                                // Backend sends session_id from the very first event
+                                if (parsedData.session_id) {
+                                    sessionId = parsedData.session_id;
+                                    sessionStorage.setItem(sessionKey, sessionId);
+                                }
+                                break;
+
+                            case 'thinking':
+                                // LLM internal reasoning chunks — exposed for optional UI display
+                                // (e.g. a collapsible "Thinking..." panel)
+                                // Not forwarded to onToken so it doesn't pollute the answer text
+                                break;
+
                             case 'token':
                                 // Incrementally streaming single words or characters
-                                const textChunk = parsedData.text || parsedData.token || '';
+                                const textChunk = parsedData.text || '';
                                 if (textChunk) {
                                     accumulatedText += textChunk;
                                     if (onToken) onToken(textChunk);
                                 }
                                 break;
 
+                            case 'status':
+                                // Tool invocation announced by the backend (e.g. "Consulting manuals_agent...")
+                                // Can be forwarded to a loading indicator if needed
+                                break;
+
                             case 'citations':
-                                // Capture references to map to the ManualViewer.jsx format
-                                if (Array.isArray(parsedData)) {
-                                    citations = parsedData.map((cit, idx) => ({
+                                // parsedData is {type, citations: [...]} — NOT the array itself
+                                if (Array.isArray(parsedData.citations)) {
+                                    citations = parsedData.citations.map((cit, idx) => ({
                                         id: cit.id || `${cit.doc}-${cit.page}-${idx}`,
-                                        docName: cit.doc || 'Documento', // Maps "doc" from backend contract to "docName" in frontend
+                                        docName: cit.doc || 'Documento', // Maps "doc" from backend to "docName" in frontend
                                         page: cit.page || 1,
                                         snippet: cit.snippet || ''
                                     }));
                                 }
                                 break;
 
-                            case 'session':
-                            case 'metadata':
-                                // Echo conversation ID to enable session persistence on subsequent turns
+                            case 'done':
+                                // Final event — capture session_id for the next turn
                                 if (parsedData.session_id) {
                                     sessionId = parsedData.session_id;
                                     sessionStorage.setItem(sessionKey, sessionId);
                                 }
-                                if (parsedData.confidence !== undefined) {
-                                    confidence = parsedData.confidence;
-                                }
-                                if (parsedData.needs_escalation !== undefined) {
-                                    needsEscalation = parsedData.needs_escalation;
-                                }
                                 break;
 
                             case 'error':
-                                throw new Error(parsedData.message || 'An error occurred during LLM graph execution.');
+                                if (!parsedData.recoverable) {
+                                    throw new Error(parsedData.message || 'An error occurred during LLM graph execution.');
+                                }
+                                // Recoverable tool errors are logged but don't abort the stream
+                                console.warn('Recoverable agent error:', parsedData.message);
+                                break;
 
                             default:
                                 // Fallback parsing for unstructured data
