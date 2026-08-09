@@ -201,13 +201,12 @@ uno per uno) la guida completa è in [`agents/README.md`](agents/README.md).
 
 # Backend
 
-_Da completare a cura di chi lavora sul backend: variabili d'ambiente, `.env`,
-eventuali passaggi di inizializzazione._
+_TODO_
 
 # Frontend
 
-_Da completare a cura di chi lavora sul frontend._
+_TODO_
 
 # Mock-backoffice
 
-_Da completare._
+_TODO_
