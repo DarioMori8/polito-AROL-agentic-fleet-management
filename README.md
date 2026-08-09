@@ -28,21 +28,29 @@ servizio stanno nelle sezioni più sotto.
 ## 1. Prerequisiti
 
 - Docker e Docker Compose (`docker compose version` deve rispondere)
-- **Ollama installato sull'host**, con i due modelli scaricati
+- **Ollama acceso sull'host**, con i modelli `gpt-oss:20b` e `nomic-embed-text`
+  già scaricati
 
-Ollama **non** è un servizio del compose e non viene installato automaticamente:
-i container lo raggiungono sull'host tramite `host.docker.internal:11434`. Va
-installato da [ollama.com/download](https://ollama.com/download) (su Linux:
-`curl -fsSL https://ollama.com/install.sh | sh`), e poi:
+Ollama **non** è un servizio del compose: i container lo raggiungono sull'host
+tramite `host.docker.internal:11434`, quindi deve essere già in esecuzione prima
+di avviare lo stack.
 
-```bash
-ollama pull gpt-oss:20b
-ollama pull nomic-embed-text
-```
+> Se non l'hai mai installato, o se ti mancano i modelli, fai prima gli step
+> **1, 2 e 3** di [`agents/README.md`](agents/README.md) — installazione,
+> download dei due modelli e verifica — e poi torna qui. Non sono ripetuti in
+> questa pagina per non tenere due copie delle stesse istruzioni.
 
-Sono ~13 GB il primo e ~274 MB il secondo. Servono entrambi e non sono
-intercambiabili: uno genera le risposte, l'altro trasforma il testo in vettori
-per la ricerca semantica. Verifica che rispondano:
+### Avviare Ollama
+
+- **macOS**: parte da solo aprendo l'app. Se l'hai installato con Homebrew:
+  `brew services start ollama`
+- **Linux**: l'installer registra un servizio systemd, quindi
+  `sudo systemctl start ollama`. In alternativa `ollama serve` in un terminale
+  dedicato, da lasciare aperto
+- **Windows**: parte automaticamente come servizio in background dopo
+  l'installazione (icona nella system tray)
+
+Verifica che risponda e che entrambi i modelli siano elencati:
 
 ```bash
 curl http://localhost:11434/api/tags

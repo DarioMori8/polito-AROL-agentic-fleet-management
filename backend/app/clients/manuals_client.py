@@ -23,11 +23,13 @@ class ManualsClient(ManualClientBase):
         self.base_url = settings.MANUALS_AGENT_URL
 
     @retry(
-        # Only retry on transient network issues (timeout, connection
-        # refused). Retrying on HTTP error codes (4xx/5xx) would be
-        # pointless, since those usually indicate a logic error, not a
-        # temporary network glitch.
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+        # Only retry when the agent is unreachable. Timeouts are deliberately
+        # excluded: the agent is not flaky, it is slow — a full RAG turn on a
+        # 20B model takes tens of seconds — so retrying restarts the whole
+        # generation from scratch, piles concurrent work onto Ollama and makes
+        # every attempt slower than the one before. Retrying HTTP error codes
+        # would be pointless too: those indicate a logic error, not a glitch.
+        retry=retry_if_exception_type(httpx.ConnectError),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=8),
         # reraise=True ensures that, after exhausting all retries, the
@@ -41,7 +43,10 @@ class ManualsClient(ManualClientBase):
         Kept separate from search() so that tenacity only retries the
         raw network call, not the response parsing/validation logic.
         """
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # Sized for the worst case of a 20B model composing an answer over
+        # retrieved manual chunks, not for the average case: a measured warm
+        # request already sits around 27s.
+        async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(url, json=payload)
 
         response.raise_for_status()
