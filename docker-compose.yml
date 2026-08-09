@@ -34,11 +34,13 @@ services:
       EMBEDDING_MODEL: nomic-embed-text
       MAX_ITERATIONS: "5"
       CHROMA_PATH: ./data/chroma
+      MANUALS_PATH: /data/manuals
       DOCS_SERVICE_URL: http://mock-backoffice:8003 # service name
     extra_hosts:
       - "host.docker.internal:host-gateway" # required on Linux, harmless elsewhere
     volumes:
       - ./agents:/app # source + Chroma index (./agents/data) persist here
+      - ./data/manuals:/data/manuals:ro # shared manuals volume, read-only here
     depends_on:
       mock-backoffice:
         condition: service_healthy

@@ -21,6 +21,9 @@ class VectorStore:
     def add(self, ids: list[str], chunks: list[str], metadatas: list[dict]) -> None:
         self.collection.add(ids=ids, documents=chunks, metadatas=metadatas)
 
+    def has_chunks(self, where: dict) -> bool:
+        return bool(self.collection.get(where=where, limit=1)["ids"])
+
     def query(self, text: str, k: int = 5, where: dict | None = None) -> list[dict]:
         results = self.collection.query(
             query_texts=[text],
