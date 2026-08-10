@@ -84,6 +84,10 @@ poi `backend`, infine `frontend`.
 
 ## 4. Verificare
 
+Il `mock-backoffice` costruisce il proprio database dal workbook Excel al primo
+avvio, da solo: non serve lanciare nulla. I dettagli sono nella sezione
+[Mock-backoffice](#mock-backoffice).
+
 ```bash
 docker compose ps
 ```
@@ -133,11 +137,13 @@ data/manuals/
 Il compose monta questa cartella in sola lettura su `/data/manuals` dentro il
 container, quindi basta copiarceli dentro: non serve ricostruire l'immagine.
 
-Il nome del file conta. L'ingestion ne ricava l'identificativo della macchina
-(`17478_manual_EN.pdf` → `17478`) e lo salva come `machine_id` nei metadati di
-ogni chunk: è la chiave con cui l'agente, a runtime, cerca solo dentro il
-manuale della macchina giusta. I file con un nome che non segue lo schema
-`<serialNumber>_manual_<LANG>.pdf` vengono saltati con un messaggio.
+Il nome del file conta: contiene il **serial number** della macchina. L'ingestion
+lo traduce nel `machineId` corrispondente (`17478_manual_EN.pdf` → `17478` →
+`MCH-0004`) chiedendolo al registro della flotta del `mock-backoffice`, e usa
+quello nei metadati di ogni chunk. È la chiave con cui l'agente, a runtime, cerca
+solo dentro il manuale della macchina giusta — e il motivo per cui tutto il
+sistema, dal QR fino a Chroma, usa un identificativo solo. I file che non seguono
+lo schema `<serialNumber>_manual_<LANG>.pdf` vengono saltati con un messaggio.
 
 > `data/` è in `.gitignore`, quindi i PDF non finiscono mai in un commit.
 
@@ -153,10 +159,14 @@ docker compose exec agents python -m manuals_agent.ingestion
 Output atteso la prima volta:
 
 ```
-Ingested 15610_manual_EN.pdf (machine_id 15610): 277 chunk
-Ingested 17203_manual_EN.pdf (machine_id 17203): 263 chunk
+Ingested 15610_manual_EN.pdf -> MCH-0001: 277 chunk
+Ingested 17203_manual_EN.pdf -> MCH-0002: 263 chunk
 ...
 ```
+
+Il `mock-backoffice` deve essere in piedi — con Compose lo è già, `agents` non
+parte prima che sia `healthy` — perché è lui a dire quale `machineId` corrisponde
+a ciascun serial.
 
 **Mettici in conto parecchi minuti**: sono 2155 chunk in totale e ognuno richiede
 una chiamata di embedding a Ollama. Lascialo finire.
@@ -182,12 +192,11 @@ diversi non sono confrontabili.
 ```bash
 curl -X POST http://localhost:8001/agents/manuals/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "What safety precautions should be taken before maintenance?", "machine_id": "17478"}'
+  -d '{"query": "What safety precautions should be taken before maintenance?", "machine_id": "MCH-0004"}'
 ```
 
-`machine_id` deve essere uno degli otto identificativi ricavati dai nomi dei
-file. Se la risposta contiene `citations` con `doc` e `page` reali, il RAG
-funziona.
+`machine_id` è quello del dataset, da `MCH-0001` a `MCH-0008`. Se la risposta
+contiene `citations` con `doc` e `page` reali, il RAG funziona.
 
 Se `citations` è vuoto e `confidence` è `0.0`: o l'ingestion non è stata fatta,
 o il `machine_id` non corrisponde a nessun manuale indicizzato.
@@ -209,4 +218,73 @@ _TODO_
 
 # Mock-backoffice
 
-_TODO_
+Sta al posto dell'ERP/CRM reale di AROL e serve i dati del dataset Q2: aziende,
+macchine, preventivi con lo storico revisioni, ordini, telemetria e allarmi.
+
+## Non c'è niente da fare
+
+Il database **si costruisce da solo** al primo avvio del container. Il servizio
+legge `mock-backoffice/dataset/AROL_Q2_synthetic_fleet_dataset.xlsx` e scrive
+`mock-backoffice/data/backoffice.db` prima di iniziare a servire richieste.
+
+Nel repository c'è il **workbook**, non il database: il `.db` è dato derivato e
+si rigenera in meno di un secondo, quindi versionarlo sarebbe solo un binario in
+più da tenere allineato. Nei log del container, al primo avvio:
+
+```
+Companies                   5 righe, 7 colonne
+...
+TelemetrySnapshots       5760 righe, 10 colonne
+
+Scritto data/backoffice.db (988 KB)
+```
+
+Viene ricostruito **solo** se manca o se il workbook è più recente, quindi i
+riavvii successivi non ripetono il lavoro.
+
+## Se il dataset viene aggiornato
+
+Sostituisci il file in `mock-backoffice/dataset/` e riavvia il servizio: il
+timestamp più recente basta a farlo ricaricare da zero.
+
+```bash
+docker compose restart mock-backoffice
+```
+
+Per forzare la ricostruzione senza toccare il workbook, cancella il database:
+
+```bash
+rm mock-backoffice/data/backoffice.db && docker compose restart mock-backoffice
+```
+
+## Verificare
+
+```bash
+curl http://localhost:8003/health
+curl http://localhost:8003/machines
+```
+
+Il primo deve rispondere `{"status":"ok"}`, il secondo elencare le 8 macchine
+della flotta con serial number, modello e azienda proprietaria.
+
+Se ottieni **`503 Dataset not loaded`**, il workbook non è dove il servizio se lo
+aspetta: il servizio parte comunque — così un dataset mancante non blocca tutto
+lo stack — ma non ha dati da servire.
+
+## Endpoint disponibili
+
+| Endpoint | Cosa restituisce |
+|---|---|
+| `GET /machines` | la flotta, con serial, modello e azienda |
+| `GET /machines/{machine_id}` | dettaglio macchina, configurazione as-built e specifiche del modello |
+| `GET /machines/{machine_id}/health` | sintesi operativa su una finestra temporale: uptime, produzione, temperatura, allarmi ricorrenti |
+| `GET /companies/{company_id}/orders` | ordini del cliente, con le righe e il totale della revisione approvata |
+| `GET /companies/{company_id}/quotes` | preventivi del cliente, con lo storico revisioni, stato e importo correnti |
+
+I due endpoint commerciali accettano `?machine_id=` per restringere a una singola
+macchina, più i filtri `status`, `order_id` e `quote_id`.
+
+Sono scopati per **azienda** e non per macchina perché è così che sono fatti i
+dati: un ordine porta un `companyId`, e arriva a una macchina solo attraverso le
+righe di una revisione di preventivo — quando ci arriva, perché un preventivo per
+una macchina non ancora installata non punta a nessuna macchina.
