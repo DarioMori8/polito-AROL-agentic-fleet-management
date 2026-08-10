@@ -12,77 +12,9 @@ import {
     Copy,
     Check,
     FileText,
-    Sliders,
-    AlertTriangle
+    Sliders
 } from 'lucide-react';
 import '@/styles/ManualViewer.css';
-
-// TO BE REMOVED WHEN REAL MANUAL DATABASE IMPLEMENTED
-// Rich fallback technical documentation database for in-field simulation (Fase 1/2 DoD)
-const FALLBACK_MANUALS_DATABASE = {
-    'Manuale_Euro_VP_Manutenzione.pdf': {
-        title: 'AROL Euro VP - Use & Maintenance Manual',
-        totalPages: 80,
-        pages: {
-            24: {
-                section: 'Section 4.1 - Preventive Maintenance Scheduler',
-                title: 'IDLE ROLLERS LUBRICATION & SERVICE INTERVALS',
-                text: 'Routine inspection and lubrication of the idle rollers on the Euro VP capping head must be conducted every 500 operating hours. In high-humidity bottling lines, reduce this interval to 300 hours. Immediate manual lubrication is mandatory if the telemetry system triggers the vibration alarm AL-VIB-02.',
-                specs: [
-                    { label: 'Lubricant Type', value: 'AROL Food-Grade Grease Synthetic-3' },
-                    { label: 'Check Interval', value: '500 Hours (Standard) / 300 Hours (Wet environment)' },
-                    { label: 'Related Alarm', value: 'AL-VIB-02 (Vibration Out of Range)' }
-                ],
-                blueprintType: 'roller'
-            },
-            42: {
-                section: 'Section 4.2 - Vibration Diagnostics',
-                title: 'VIBRATION ANOMALIES & CAM ALIGNMENT',
-                text: 'Excessive baseplate vibration often originates from loose anchoring bolts or uneven pressure distribution along the capping track. Inspect the idle guide rollers for structural wear. Tighten anchor bolts to the certified specifications. If vibrations continue to exceed threshold limits, check and manually align the main capping closing cam.',
-                specs: [
-                    { label: 'Primary Cam Clearances', value: '0.05 mm - 0.12 mm' },
-                    { label: 'Anchor Bolt Torque', value: '120.0 Nm' },
-                    { label: 'Inspection Points', value: 'Capping Head Basement, Idle Guide Rollers, Roller Bearings' }
-                ],
-                blueprintType: 'cam'
-            }
-        }
-    },
-    'Specifiche_Ancoraggio_AROL.pdf': {
-        title: 'AROL Structural Anchoring & Installation Specs',
-        totalPages: 30,
-        pages: {
-            15: {
-                section: 'Section 2.3 - Heavy Duty Anchoring',
-                title: 'BASEPLATE STABILIZATION & MECHANICAL ANCHORING',
-                text: 'To minimize operational harmonics and high-torque mechanical resonance, capping machines must be rigidly bolted using M16 class 8.8 threaded anchors. The concrete foundation must be fully cured (min. 28 days) with a minimum compressive strength of 25 MPa. Ensure uniform torque distribution using a calibrated torque wrench.',
-                specs: [
-                    { label: 'Bolt Spec', value: 'M16 Threaded Rod, Class 8.8 Steel' },
-                    { label: 'Target Tightening Torque', value: '120.0 Nm (±5 Nm Tolerance)' },
-                    { label: 'Minimum Concrete Depth', value: '150.0 mm' }
-                ],
-                blueprintType: 'anchor'
-            }
-        }
-    },
-    'Specifiche_Serraggio_Q2.pdf': {
-        title: 'AROL Mechanical Torque & Thermal Tolerances',
-        totalPages: 18,
-        pages: {
-            8: {
-                section: 'Section 1.8 - Motor Thermal Thresholds',
-                title: 'MOTOR THERMAL LIMITS & CAPPING TORQUE COEFFICIENTS',
-                text: 'The main motor drive assembly is designed to operate continuously under a baseplate temperature limit of 60.0 °C. Exceeding 65.0 °C triggers automatic telemetry warnings. Capping torque coefficients for the Euro VP capping jaws must be maintained at an optimal value of 14.2 Nm to prevent bottle closure deformation or leakage.',
-                specs: [
-                    { label: 'Max Baseplate Temp', value: '60.0 °C (Operational Limit) / 65.0 °C (Critical Threshold)' },
-                    { label: 'Optimal Capping Torque', value: '14.2 Nm' },
-                    { label: 'Power Supply Coefficient', value: '400V / 50Hz (Stabilized)' }
-                ],
-                blueprintType: 'motor'
-            }
-        }
-    }
-};
 
 /**
  * ManualViewer Component (Context Aware & Dynamic)
@@ -112,69 +44,42 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
     const [copied, setCopied] = useState(false);
     const viewerRef = useRef(null);
 
-    // Determine current active list of manuals (Server-loaded vs Offline fallback)
-    const isUsingFallback = !activeManuals || activeManuals.length === 0;
-    const manualsList = isUsingFallback
-        ? Object.keys(FALLBACK_MANUALS_DATABASE).map(filename => ({
-            filename,
-            title: FALLBACK_MANUALS_DATABASE[filename].title,
-            page_count: FALLBACK_MANUALS_DATABASE[filename].totalPages
-        }))
-        : activeManuals;
-
     // Settle on an initial active document when manuals are retrieved or modified
     useEffect(() => {
-        if (manualsList.length > 0) {
+        if (activeManuals.length > 0) {
             // If our current doc is not in the list, set the first available manual
-            const docExists = manualsList.some(m => m.filename === activeDocName);
+            const docExists = activeManuals.some(m => m.filename === activeDocName);
             if (!docExists) {
-                setActiveDocName(manualsList[0].filename);
+                setActiveDocName(activeManuals[0].filename);
                 setCurrentPage(1);
             }
         }
-    }, [manualsList, activeDocName]);
+    }, [activeManuals, activeDocName]);
 
-    // Sync state when a user clicks on an AI citation in the chat (Inter-component communication)
+    // Settle on the active doc based on the selected citation
     useEffect(() => {
         if (selectedCitation && selectedCitation.docName) {
-            const matchExists = manualsList.some(m => m.filename === selectedCitation.docName);
+            const matchExists = activeManuals.some(m => m.filename === selectedCitation.docName);
             if (matchExists) {
                 setActiveDocName(selectedCitation.docName);
                 setCurrentPage(selectedCitation.page || 1);
             } else {
                 // Safe check for offline match
-                if (FALLBACK_MANUALS_DATABASE[selectedCitation.docName]) {
+                if (MOCK_MANUALS_DATABASE[selectedCitation.docName]) {
                     setActiveDocName(selectedCitation.docName);
                     setCurrentPage(selectedCitation.page || 1);
                 }
             }
         }
-    }, [selectedCitation, manualsList]);
+    }, [selectedCitation, activeManuals]);
 
     // Retrieve current active manual details
-    const activeManualRecord = manualsList.find(m => m.filename === activeDocName);
+    const activeManualRecord = activeManuals.find(m => m.filename === activeDocName);
     const totalPagesCount = activeManualRecord ? activeManualRecord.page_count : 100;
 
-    // Parse page content either from fallback database or inject real RAG snippet
-    const getPageContent = () => {
-        // 1. Check if we have pre-defined mock page data matching this file & page
-        const fallbackDoc = FALLBACK_MANUALS_DATABASE[activeDocName];
-        if (fallbackDoc && fallbackDoc.pages[currentPage]) {
-            const fallbackPage = fallbackDoc.pages[currentPage];
-
-            // If the user clicked on this specific page as a RAG citation and it has a live snippet, 
-            // we enrich the page content with the real Vector DB chunk dynamically!
-            if (selectedCitation && selectedCitation.docName === activeDocName && selectedCitation.page === currentPage && selectedCitation.snippet) {
-                return {
-                    ...fallbackPage,
-                    text: selectedCitation.snippet, // Real LLM/Chroma chunk injected!
-                    isSnippetInjected: true
-                };
-            }
-            return fallbackPage;
-        }
-
-        // 2. If no mock blueprint exists for this file/page, but we have a live active citation snippet, we draw it!
+    // Build the viewer card data: prioritize live RAG citation snippets, then show a generic placeholder
+    const buildPageCard = () => {
+        // 1. If the user navigated to this exact page via an AI citation and we have a real RAG snippet, show it
         if (selectedCitation && selectedCitation.docName === activeDocName && selectedCitation.page === currentPage && selectedCitation.snippet) {
             return {
                 section: 'AI RAG Retrieved Segment',
@@ -190,7 +95,8 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
             };
         }
 
-        // 3. Fallback standard page view for non-indexed pages
+        // 2. Generic placeholder for pages without a live RAG snippet
+        const machineLabel = activeMachine ? `${activeMachine.name || activeMachine.id}` : 'Unknown Machine';
         return {
             section: 'Technical Instruction Sheet',
             title: 'AROL SYSTEM RUNTIME DOCUMENTATION',
@@ -198,38 +104,40 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
             specs: [
                 { label: 'Document Name', value: activeDocName },
                 { label: 'Active Page', value: `${currentPage} / ${totalPagesCount}` },
-                { label: 'Integration Status', value: isUsingFallback ? 'Offline Cache' : 'Active REST Endpoint' }
+                { label: 'Active Machine', value: machineLabel }
             ],
             blueprintType: 'default'
         };
     };
 
-    const pageData = getPageContent();
+    const pageCard = buildPageCard();
 
-    // Document Navigation
+    // Document Navigation - Next Page
     const handleNextPage = () => {
         if (currentPage < totalPagesCount) {
             setCurrentPage((prev) => prev + 1);
         }
     };
 
+    // Document Navigation - Previous Page
     const handlePrevPage = () => {
         if (currentPage > 1) {
             setCurrentPage((prev) => prev - 1);
         }
     };
 
+    // Document Navigation - Document Change
     const handleDocChange = (e) => {
         const docName = e.target.value;
         setActiveDocName(docName);
         setCurrentPage(1);
     };
 
-    // Zoom Operations
+    // Document Navigation - Zoom Operations
     const handleZoomIn = () => setZoom((prev) => Math.min(prev + 10, 150));
     const handleZoomOut = () => setZoom((prev) => Math.max(prev - 10, 70));
 
-    // Fullscreen toggle
+    // Document Navigation - Fullscreen toggle
     const toggleFullscreen = () => {
         if (!isFullscreen) {
             if (viewerRef.current?.requestFullscreen) {
@@ -244,7 +152,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         }
     };
 
-    // Listen for native escape keys to reset fullscreen state
+    // Document Navigation - Listen for native escape keys to reset fullscreen state
     useEffect(() => {
         const handleFullscreenChange = () => {
             setIsFullscreen(!!document.fullscreenElement);
@@ -253,7 +161,8 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
 
-    // Internal search engine (Searches through all documents and indexes matching pages)
+    // Document Navigation - Client-side index search (title/filename only).
+    // NOTE: Full-text page search requires a backend RAG query to ChromaDB — not available client-side.
     const handleSearch = (e) => {
         const query = e.target.value;
         setSearchQuery(query);
@@ -262,30 +171,18 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
             return;
         }
 
+        const lowerQuery = query.toLowerCase();
         const matches = [];
 
-        // Search inside fallback database
-        Object.entries(FALLBACK_MANUALS_DATABASE).forEach(([docKey, docVal]) => {
-            Object.entries(docVal.pages).forEach(([pageNum, pageVal]) => {
-                const textContent = `${pageVal.title} ${pageVal.text} ${pageVal.section}`.toLowerCase();
-                if (textContent.includes(query.toLowerCase())) {
-                    matches.push({
-                        docName: docKey,
-                        page: parseInt(pageNum, 10),
-                        title: pageVal.title,
-                        section: pageVal.section
-                    });
-                }
-            });
-        });
-
-        // Also search active manuals index
-        manualsList.forEach(m => {
-            if (!FALLBACK_MANUALS_DATABASE[m.filename] && m.title.toLowerCase().includes(query.toLowerCase())) {
+        // Search across all available manuals by title and filename
+        activeManuals.forEach(m => {
+            const titleMatch = m.title?.toLowerCase().includes(lowerQuery);
+            const filenameMatch = m.filename?.toLowerCase().includes(lowerQuery);
+            if (titleMatch || filenameMatch) {
                 matches.push({
                     docName: m.filename,
                     page: 1,
-                    title: m.title,
+                    title: m.title || m.filename,
                     section: 'Document Cover'
                 });
             }
@@ -309,6 +206,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         }
     };
 
+    // Manual Viewer Component UI
     return (
         <div className={`manual-viewer-root ${isFullscreen ? 'is-fullscreen' : ''}`} ref={viewerRef}>
 
@@ -322,17 +220,12 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                         onChange={handleDocChange}
                         aria-label="Select Technical Document"
                     >
-                        {manualsList.map((m) => (
+                        {activeManuals.map((m) => (
                             <option key={m.filename} value={m.filename}>
                                 {m.filename.length > 25 ? `${m.filename.substring(0, 25)}...` : m.filename}
                             </option>
                         ))}
                     </select>
-                    {isUsingFallback && (
-                        <span className="offline-badge" title="No real manuals fetched, using cached fallback">
-                            Offline Cache
-                        </span>
-                    )}
                 </div>
 
                 <div className="toolbar-center-navigation">
@@ -438,51 +331,15 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                         {/* Header of technical documentation page */}
                         <div className="sheet-top-header">
                             <span className="sheet-doc-title">{activeManualRecord?.title}</span>
-                            <span className="sheet-section-tag">{pageData.section}</span>
+                            <span className="sheet-section-tag">{pageCard.section}</span>
                         </div>
 
                         <div className="sheet-body-content">
                             {/* Left Column: Interactive Vector CAD Blueprint (Drawn dynamically via CSS) */}
                             <div className="blueprint-column-visual">
                                 <div className="cad-grid-overlay"></div>
-                                <div className={`vector-cad-drawing cad-${pageData.blueprintType}`}>
-                                    {pageData.blueprintType === 'roller' && (
-                                        <div className="vector-roller-graphic">
-                                            <div className="outer-bearing"></div>
-                                            <div className="inner-axis"></div>
-                                            <div className="lube-injection-port"></div>
-                                            <span className="cad-annotation label-x">D = 48.0 mm</span>
-                                            <span className="cad-annotation label-y">Cylinder Shaft</span>
-                                        </div>
-                                    )}
-                                    {pageData.blueprintType === 'cam' && (
-                                        <div className="vector-cam-graphic">
-                                            <div className="eccentric-lobe"></div>
-                                            <div className="track-slider"></div>
-                                            <div className="pressure-direction-arrow"></div>
-                                            <span className="cad-annotation label-x">Cam Track</span>
-                                            <span className="cad-annotation label-y">±0.05 mm Tol.</span>
-                                        </div>
-                                    )}
-                                    {pageData.blueprintType === 'anchor' && (
-                                        <div className="vector-anchor-graphic">
-                                            <div className="ground-line"></div>
-                                            <div className="anchor-stud"></div>
-                                            <div className="expansion-shield"></div>
-                                            <span className="cad-annotation label-x">M16 Bolt</span>
-                                            <span className="cad-annotation label-y">C25 Concrete</span>
-                                        </div>
-                                    )}
-                                    {pageData.blueprintType === 'motor' && (
-                                        <div className="vector-motor-graphic">
-                                            <div className="motor-housing"></div>
-                                            <div className="cooling-fins"></div>
-                                            <div className="drive-shaft-coupling"></div>
-                                            <span className="cad-annotation label-x">Base Temp</span>
-                                            <span className="cad-annotation label-y">60°C Max</span>
-                                        </div>
-                                    )}
-                                    {pageData.blueprintType === 'default' && (
+                                <div className={`vector-cad-drawing cad-${pageCard.blueprintType}`}>
+                                    {pageCard.blueprintType === 'default' && (
                                         <div className="vector-default-graphic">
                                             <FileText size={48} className="deco-file-icon" />
                                             <div className="generic-blueprint-block"></div>
@@ -497,16 +354,16 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
 
                             {/* Right Column: Detailed technical instruction sheet */}
                             <div className="blueprint-column-text">
-                                <h1 className="instruction-headline">{pageData.title}</h1>
+                                <h1 className="instruction-headline">{pageCard.title}</h1>
 
                                 {/* Injected Snippet Highlighted Box */}
-                                {pageData.isSnippetInjected ? (
+                                {pageCard.isSnippetInjected ? (
                                     <div className="injected-rag-highlight-box">
                                         <span className="injected-badge">Real-Time Chroma DB Chunk</span>
-                                        <p className="instruction-paragraph highlight-text">{pageData.text}</p>
+                                        <p className="instruction-paragraph highlight-text">{pageCard.text}</p>
                                     </div>
                                 ) : (
-                                    <p className="instruction-paragraph">{pageData.text}</p>
+                                    <p className="instruction-paragraph">{pageCard.text}</p>
                                 )}
 
                                 <h2 className="specs-sub-header">
@@ -516,7 +373,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
 
                                 <table className="specs-rugged-table">
                                     <tbody>
-                                        {pageData.specs.map((spec, i) => (
+                                        {pageCard.specs.map((spec, i) => (
                                             <tr key={i}>
                                                 <td className="spec-label-cell">{spec.label}</td>
                                                 <td className="spec-value-cell">{spec.value}</td>

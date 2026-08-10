@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { MOCK_FLEET } from '../assets/mocks/MOCK_FLEET';
+import { MOCK_MANUALS } from '../assets/mocks/MOCK_MANUALS';
 
 const MachineContext = createContext(null);
 
@@ -22,45 +24,6 @@ export const isMatchingId = (idA, idB) => {
 
     // Case-insensitive string comparison for alphanumeric IDs
     return strA.toLowerCase() === strB.toLowerCase();
-};
-
-// Mock Fleet Dataset matching AROL Project Specifications
-const MOCK_FLEET = [
-    {
-        id: "001",
-        name: "AROL Capper #12",
-        model: "Euro VP",
-        serial_number: "AR-EVP-2026-098",
-        status: "maintenance", // Renders warning state in UI
-        location: "Bottling Line B (Canelli)"
-    },
-    {
-        id: "002",
-        name: "AROL Labeller #4",
-        model: "Decolleté 3000",
-        serial_number: "AR-DEC-2025-102",
-        status: "online", // Renders success state in UI
-        location: "Packaging Hall A"
-    },
-    {
-        id: "003",
-        name: "AROL Filler #9",
-        model: "Isobaric Glass 40",
-        serial_number: "AR-ISO-2024-441",
-        status: "online",
-        location: "Filling Dept 2"
-    }
-];
-
-// Mock Manuals Dataset associated to machines
-const MOCK_MANUALS = {
-    "001": [
-        { id: "man_1", machine_id: "001", title: "AROL Euro VP - Use & Maintenance Manual", filename: "Manuale_Euro_VP_Manutenzione.pdf", language: "EN", page_count: 80 },
-        { id: "man_2", machine_id: "001", title: "AROL Structural Anchoring Specs", filename: "Specifiche_Ancoraggio_AROL.pdf", language: "EN", page_count: 30 }
-    ],
-    "002": [
-        { id: "man_3", machine_id: "002", title: "AROL Mechanical Torque Standards", filename: "Specifiche_Serraggio_Q2.pdf", language: "EN", page_count: 18 }
-    ]
 };
 
 /**
@@ -111,6 +74,7 @@ export function MachineProvider({ children }) {
         setLoading(true);
         setError(null);
 
+        // MOCK MODE
         if (USE_MOCK) {
             // Simulate minor network delay for realistic loader rendering
             await new Promise(resolve => setTimeout(resolve, 600));
@@ -119,6 +83,7 @@ export function MachineProvider({ children }) {
             return;
         }
 
+        // REAL WORLD MODE
         try {
             const response = await fetch(`${API_BASE_URL}/v1/machines`);
             if (!response.ok) {
@@ -156,7 +121,7 @@ export function MachineProvider({ children }) {
             setActiveMachine(localMatch);
         }
 
-        // Mock mode
+        // MOCK MODE
         if (USE_MOCK) {
             await new Promise(resolve => setTimeout(resolve, 500));
             const machine = MOCK_FLEET.find(m => isMatchingId(m.id, id));
@@ -175,7 +140,7 @@ export function MachineProvider({ children }) {
             return;
         }
 
-        // Real-world scenario - Fetch from API
+        // REAL WORLD MODE
         try {
             // Parallel fetch execution to optimize latency and bandwidth
             const [machineRes, manualsRes] = await Promise.all([
@@ -241,6 +206,19 @@ export function MachineProvider({ children }) {
 
     const isScanned = !!activeMachine;
 
+    /**
+     * Returned Machine Provider.
+     * Variables:
+     * - fleet: array of machines in the factory
+     * - activeMachine: the machine that is currently scanned
+     * - activeManuals: the manuals of the active machine
+     * - loading: boolean that is true when the machine is loading
+     * - error: error message
+     * - fetchFleet: function to fetch the fleet
+     * - scanMachine: function to scan a machine
+     * - clearMachine: function to clear the current machine
+     * - isScanned: boolean that is true if the machine is scanned
+     */
     return (
         <MachineContext.Provider value={{
             fleet,
