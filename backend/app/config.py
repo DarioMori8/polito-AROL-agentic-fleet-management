@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     CHECKPOINT_DB_PATH: str = str(Path(__file__).resolve().parent.parent / "data" / "checkpoints.sqlite")
     DOMAIN_DB_PATH: str = str(Path(__file__).resolve().parent.parent / "data" / "domain.sqlite")
+    MANUALS_DIR : Path = (Path(__file__).resolve().parent.parent / "data" / "manuals")
+
 settings = Settings()
 
 
