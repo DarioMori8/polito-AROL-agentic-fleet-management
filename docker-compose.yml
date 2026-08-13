@@ -73,7 +73,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./backend:/app # dev source mount
+      - ./backend:/app                  # dev source mount
+      - ./data/manuals:/data/manuals:ro # shared manuals volume, same as agents
 
     depends_on:
       agents:

@@ -33,7 +33,7 @@ async def get_machine(
     return machine
 
 
-@router.get("/machine/{machine_id}/manuals", response_model=list[Manual])
+@router.get("/machines/{machine_id}/manuals", response_model=list[Manual])
 async def list_machine_manuals(
     machine_id: str,
     machine_repo: MachineRepository=Depends(get_machine_repository),

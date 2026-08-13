@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
 import { useMachine } from '@/context/MachineContext';
 import {
     BookOpen,
@@ -14,7 +15,16 @@ import {
     FileText,
     Sliders
 } from 'lucide-react';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 import '@/styles/ManualViewer.css';
+
+// Configure PDF.js worker — use local bundle via Vite's import.meta.url
+// to avoid version mismatches with CDN-served workers.
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+    import.meta.url
+).toString();
 
 /**
  * ManualViewer Component (Context Aware & Dynamic)
@@ -28,6 +38,9 @@ import '@/styles/ManualViewer.css';
  */
 export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Manuale_Euro_VP_Manutenzione.pdf' }) {
     const { activeManuals, activeMachine } = useMachine();
+
+    // PDF page count from react-pdf (overrides metadata count when available)
+    const [numPages, setNumPages] = useState(null);
 
     // Navigation & document states
     const [activeDocName, setActiveDocName] = useState(defaultDoc);
@@ -73,11 +86,26 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         }
     }, [selectedCitation, activeManuals]);
 
-    // Retrieve current active manual details
+    // 0. Retrieve current active manual details
     const activeManualRecord = activeManuals.find(m => m.filename === activeDocName);
-    const totalPagesCount = activeManualRecord ? activeManualRecord.page_count : 100;
+    const totalPagesCount = numPages ?? (activeManualRecord ? activeManualRecord.page_count : 100);
 
-    // Build the viewer card data: prioritize live RAG citation snippets, then show a generic placeholder
+    // 1. Build the absolute PDF URL.
+    // The backend returns a relative path (e.g. "/static/manuals/file.pdf").
+    // We must prepend the API origin so react-pdf fetches from the backend,
+    // not from the Vite dev server (different port → wrong origin → Invalid PDF).
+    const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000';
+    const activePdfUrl = activeManualRecord?.url
+        ? `${API_BASE_URL}${activeManualRecord.url}`
+        : null;
+
+    const onDocumentLoadSuccess = ({ numPages }) => {
+        setNumPages(numPages);
+        // Reset to page 1 only if current page exceeds the real page count
+        if (currentPage > numPages) setCurrentPage(1);
+    };
+
+    // 2. Build the viewer card data: prioritize live RAG citation snippets, then show a generic placeholder
     const buildPageCard = () => {
         // 1. If the user navigated to this exact page via an AI citation and we have a real RAG snippet, show it
         if (selectedCitation && selectedCitation.docName === activeDocName && selectedCitation.page === currentPage && selectedCitation.snippet) {
@@ -112,6 +140,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
 
     const pageCard = buildPageCard();
 
+    // DOCUMENT NAVIGATION HANDLERS //
     // Document Navigation - Next Page
     const handleNextPage = () => {
         if (currentPage < totalPagesCount) {
@@ -191,6 +220,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         setSearchResults(matches);
     };
 
+    // Document Navigation - Handle user clicks on search results
     const handleJumpToSearchMatch = (match) => {
         setActiveDocName(match.docName);
         setCurrentPage(match.page);
@@ -325,71 +355,30 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                 {/* Dynamic Zoom Wrapper */}
                 <div
                     className="document-zoom-container"
-                    style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        padding: '20px'
+                    }}
                 >
-                    <div className="blueprint-paper-sheet">
-                        {/* Header of technical documentation page */}
-                        <div className="sheet-top-header">
-                            <span className="sheet-doc-title">{activeManualRecord?.title}</span>
-                            <span className="sheet-section-tag">{pageCard.section}</span>
-                        </div>
-
-                        <div className="sheet-body-content">
-                            {/* Left Column: Interactive Vector CAD Blueprint (Drawn dynamically via CSS) */}
-                            <div className="blueprint-column-visual">
-                                <div className="cad-grid-overlay"></div>
-                                <div className={`vector-cad-drawing cad-${pageCard.blueprintType}`}>
-                                    {pageCard.blueprintType === 'default' && (
-                                        <div className="vector-default-graphic">
-                                            <FileText size={48} className="deco-file-icon" />
-                                            <div className="generic-blueprint-block"></div>
-                                            <span className="cad-annotation label-x">AROL Fleet</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="blueprint-engineering-footer">
-                                    <span>SCALE: 1:5 • ALL DIMENSIONS IN MM • AROL DRAWING SYSTEM</span>
-                                </div>
-                            </div>
-
-                            {/* Right Column: Detailed technical instruction sheet */}
-                            <div className="blueprint-column-text">
-                                <h1 className="instruction-headline">{pageCard.title}</h1>
-
-                                {/* Injected Snippet Highlighted Box */}
-                                {pageCard.isSnippetInjected ? (
-                                    <div className="injected-rag-highlight-box">
-                                        <span className="injected-badge">Real-Time Chroma DB Chunk</span>
-                                        <p className="instruction-paragraph highlight-text">{pageCard.text}</p>
-                                    </div>
-                                ) : (
-                                    <p className="instruction-paragraph">{pageCard.text}</p>
-                                )}
-
-                                <h2 className="specs-sub-header">
-                                    <Sliders size={14} style={{ marginRight: '6px', color: 'var(--arol-blue)' }} />
-                                    MECHANICAL PARAMETERS & LIMITS
-                                </h2>
-
-                                <table className="specs-rugged-table">
-                                    <tbody>
-                                        {pageCard.specs.map((spec, i) => (
-                                            <tr key={i}>
-                                                <td className="spec-label-cell">{spec.label}</td>
-                                                <td className="spec-value-cell">{spec.value}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Bottom corporate stamp */}
-                        <div className="sheet-bottom-stamping">
-                            <span>AROL S.P.A. • TECHNICAL SERVICE DEPARTMENT • STRICTLY CONFIDENTIAL</span>
-                            <span>VER. 2026.07</span>
-                        </div>
-                    </div>
+                    {/* PDF Renderer */}
+                    {activePdfUrl ? (
+                        <Document
+                            file={activePdfUrl}
+                            onLoadSuccess={onDocumentLoadSuccess}
+                            loading={<div className="pdf-loading">Caricamento PDF in corso...</div>}
+                            error={<div className="pdf-error">Impossibile caricare il file PDF.<br /><small>{activePdfUrl}</small></div>}
+                        >
+                            <Page
+                                pageNumber={currentPage}
+                                scale={zoom / 100}
+                                renderTextLayer={true}
+                                renderAnnotationLayer={true}
+                            />
+                        </Document>
+                    ) : (
+                        <div className="pdf-loading">Nessun manuale selezionato.</div>
+                    )}
                 </div>
             </main>
 
