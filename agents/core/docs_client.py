@@ -2,21 +2,28 @@ import httpx
 
 from core.config import settings
 
+# The dataset spells its controlled vocabularies with capitals and spaces. A model
+# asked for "still open orders" will happily produce "in_production" or "closed",
+# so the spelling is repaired here, on the seam: the backoffice stands in for a
+# real ERP and stays strict about the values it accepts.
+ORDER_STATUSES = ("Confirmed", "In production", "Delivered", "Closed")
+QUOTE_STATUSES = ("Draft", "Submitted", "Superseded", "Approved", "Rejected", "Expired")
 
-def _normalize_enum(value: str | None) -> str | None:
-    """Coerce an LLM-supplied filter value to the backend's enum spelling.
 
-    Tool schemas declare enums, but a model may still answer "spare parts" or
-    "In Production" where the data says "spare_parts". The backend is a stand-in
-    for a real ERP and stays strict, so the tolerance lives here, on the seam.
-    """
+def _canonical(value: str | None, vocabulary: tuple[str, ...]) -> str | None:
     if value is None:
         return None
-    return value.strip().lower().replace(" ", "_").replace("-", "_")
+    key = value.strip().lower().replace("_", " ")
+    for term in vocabulary:
+        if term.lower() == key:
+            return term
+    # Unknown value: pass it through and let it simply match nothing, rather than
+    # silently dropping the filter and widening the result set.
+    return value
 
 
 class DocsClient:
-    """HTTP client for the backoffice service (mock today, real ERP/CRM/Document Store later).
+    """HTTP client for the backoffice service (mock today, real ERP/CRM later).
 
     Only the base URL and auth headers change when swapping mock for real —
     this class is the seam DocsAgent depends on, never the raw data source.
@@ -25,53 +32,41 @@ class DocsClient:
     def __init__(self):
         self.base_url = settings.DOCS_SERVICE_URL
 
-    async def search_documents(
-        self,
-        query: str,
-        machine_id: str,
-        document_type: str | None = None,
-        order_id: str | None = None,
-    ) -> list[dict]:
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=10.0) as client:
-            response = await client.post(
-                "/documents/search",
-                json={
-                    "query": query,
-                    "machine_id": machine_id,
-                    "document_type": _normalize_enum(document_type),
-                    "order_id": order_id,
-                },
-            )
-            response.raise_for_status()
-            return response.json()["results"]
-
     async def search_orders(
         self,
-        machine_id: str,
+        company_id: str,
+        machine_id: str | None = None,
         order_id: str | None = None,
         status: str | None = None,
-        order_type: str | None = None,
     ) -> list[dict]:
-        params = {
-            "machine_id": machine_id,
-            "order_id": order_id,
-            "status": _normalize_enum(status),
-            "order_type": _normalize_enum(order_type),
-        }
-        return await self._get("/orders", params)
+        return await self._get(
+            f"/companies/{company_id}/orders",
+            {
+                "machine_id": machine_id,
+                "order_id": order_id,
+                "status": _canonical(status, ORDER_STATUSES),
+            },
+        )
 
     async def search_quotes(
         self,
-        machine_id: str,
+        company_id: str,
+        machine_id: str | None = None,
         quote_id: str | None = None,
         status: str | None = None,
     ) -> list[dict]:
-        params = {
-            "machine_id": machine_id,
-            "quote_id": quote_id,
-            "status": _normalize_enum(status),
-        }
-        return await self._get("/quotes", params)
+        return await self._get(
+            f"/companies/{company_id}/quotes",
+            {
+                "machine_id": machine_id,
+                "quote_id": quote_id,
+                "status": _canonical(status, QUOTE_STATUSES),
+            },
+        )
+
+    async def list_machines(self) -> list[dict]:
+        """The fleet registry, including the serial number of each machine."""
+        return await self._get("/machines", {})
 
     async def _get(self, path: str, params: dict) -> list[dict]:
         # Unset filters are dropped so they are not sent as empty query values.

@@ -14,6 +14,7 @@ class Machine(BaseModel):
     name: str
     model: str          # real AROL model string (e.g. "AROL EQUATORQUE")
     serial_number: str
+    company_id: str     # owning customer: the tenant boundary for every lookup
     status: MachineStatus  # runtime state
     location: str   #e.g. "Bottling Line 2"
 
