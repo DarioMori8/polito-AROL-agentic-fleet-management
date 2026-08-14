@@ -6,7 +6,8 @@ from pathlib import Path
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    MANUALS_AGENT_URL: str = "http://localhost:8001"
+    AGENTS_SERVICE_URL: str = "http://localhost:8001"
+
 
     # nuove, per l'orchestrator
     ORCHESTRATOR_LLM_PROVIDER: str = "ollama"

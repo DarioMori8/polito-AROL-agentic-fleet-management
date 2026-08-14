@@ -168,6 +168,18 @@ async def build_graph():
         graph = _graph_builder.compile(checkpointer=checkpointer)
         yield graph
 
+def normalize_artifact(artifact: dict) -> list[dict]:
+    """Single source of truth for turning one tool artifact into a
+    flat list of sources, each carrying a `kind` the frontend switches on.
+    Manuals citations become kind="manual"; docs sources keep their own kind.
+    An error artifact (no citations, no sources) yields an empty list."""
+    sources: list[dict] = []
+    for citation in artifact.get("citations", []):
+        sources.append({"kind": "manual", **citation})
+    sources.extend(artifact.get("sources", []))
+    return sources
+
+
 class LangGraphOrchestrator(Orchestrator):
 
     def __init__(self, graph):
@@ -199,11 +211,11 @@ class LangGraphOrchestrator(Orchestrator):
         )
 
         final_message= result["messages"][-1]
-        citations= self._extract_citations(result["messages"])
+        sources= self._extract_sources(result["messages"])
 
         return ChatResponse(
             answer=final_message.content or "",
-            citations=citations,
+            sources=sources,
             session_id=session_id,  
         )
 
@@ -227,7 +239,7 @@ class LangGraphOrchestrator(Orchestrator):
         # This is also the future thread_id once checkpointing is wired.
         yield {"type": "start", "session_id": session_id}
 
-        citations: list[dict]= []
+        sources: list[dict] = []
 
         try:
             async for stream_mode, payload in self._graph.astream(
@@ -274,10 +286,9 @@ class LangGraphOrchestrator(Orchestrator):
                                     "recoverable": True,
                                     "message": msg.artifact["error"],
                                 }
-                            for c in msg.artifact.get("citations", []):
-                                citations.append(c)
+                            sources.extend(normalize_artifact(msg.artifact))
 
-            yield {"type": "citations", "citations": citations}
+            yield {"type": "sources", "sources": sources}
             yield {"type": "done", "session_id": session_id}
 
         except Exception as exc:
@@ -290,7 +301,7 @@ class LangGraphOrchestrator(Orchestrator):
 
     def _project_messages(self, messages: list[BaseMessage]) -> list[HistoryMessage]:
         projected: list[HistoryMessage] = []
-        pending_citations: list[Citation] = []   # the "drawer": citations seen in this turn,
+        pending_sources: list[dict] = []   # the "drawer": citations seen in this turn,
                                                     # waiting to be attached to the answer that closes it
 
         for msg in messages:
@@ -306,11 +317,12 @@ class LangGraphOrchestrator(Orchestrator):
                 ))
 
             elif isinstance(msg, ToolMessage):
-                # Citations live in the tool artifact, not in the answer.
+                # Sources live in the tool artifact, not in the answer.
                 # Stash them; they belong to the assistant message that comes next.
                 if isinstance(msg.artifact, dict):
-                    for c in msg.artifact.get("citations", []):
-                        pending_citations.append(Citation(**c))
+                    if isinstance(msg.artifact, dict):
+                        pending_sources.extend(normalize_artifact(msg.artifact))
+
 
             elif isinstance(msg, AIMessage):
                 # An AIMessage with no text content is the "decide to call a tool" step:
@@ -322,9 +334,9 @@ class LangGraphOrchestrator(Orchestrator):
                 projected.append(HistoryMessage(
                     role=MessageRole.ASSISTANT,
                     content=msg.content,
-                    citations=pending_citations,
+                    sources=pending_sources,
                 ))
-                pending_citations = []
+                pending_sources = []
 
         return projected
 
@@ -343,20 +355,20 @@ class LangGraphOrchestrator(Orchestrator):
         return ConversationHistory(session_id=session_id, messages=projected)
 
 
-
-
-    def _extract_citations(self, messages: list[BaseMessage]) -> list[dict]:
+    def _extract_sources(self, messages: list[BaseMessage]) -> list[dict]:
         """
-        Walks through the final message history looking for ToolMessage
-        instances (the results produced by tools executed during the graph
-        run) and extracts their citations, if any.
+        Walks the message history collecting the structured sources produced
+        by every tool during the graph run, normalized into a single list
+        where each element carries a `kind` the frontend can switch on.
+
+        Manuals citations (doc/page/snippet) are tagged kind="manual";
+        docs sources already carry their own kind (document/order/quote).
         """
-        citations: list[dict] = []
+        sources: list[dict] = []
         for msg in messages:
-            if isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict):
-                tool_citations = msg.artifact.get("citations")
-                if tool_citations:
-                    citations.extend(tool_citations)
-        return citations        
-    
+            if not (isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict)):
+                continue
+            sources.extend(normalize_artifact(msg.artifact))
+            
+        return sources
 
