@@ -97,13 +97,13 @@ export default function ChatWindow({
                     {messages
                         .filter((msg) => !(msg.status === 'sending' && msg.text === ''))
                         .map((msg) => (
-                        <ChatBubble
-                            key={msg.id}
-                            message={msg}
-                            onCitationClick={onCitationClick}
-                            onRetry={onRetryMessage}
-                        />
-                    ))}
+                            <ChatBubble
+                                key={msg.id}
+                                message={msg}
+                                onCitationClick={onCitationClick}
+                                onRetry={onRetryMessage}
+                            />
+                        ))}
 
                     {/* AI Thinking / Streaming Indicator */}
                     {isLoading && (
