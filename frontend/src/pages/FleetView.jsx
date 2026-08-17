@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useMachine } from '../context/MachineContext';
+import '../styles/FleetView.css';
 
 /**
  * FleetView Component

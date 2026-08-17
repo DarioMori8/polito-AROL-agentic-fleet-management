@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowLeft, Cpu, User, ShieldAlert, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Cpu, ShieldAlert, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import Header from '../ui/Header';
 
 const renderStatusBadge = (status) => {
     const sanitizedStatus = status ? status.toLowerCase() : '';
@@ -29,15 +30,7 @@ const renderStatusBadge = (status) => {
 
 export default function ChatWindowHeader({ activeMachine, onBackClick }) {
     return (
-        <header className="chat-header">
-            <button
-                className="header-back-btn"
-                onClick={onBackClick}
-                aria-label="Go back to fleet view"
-            >
-                <ArrowLeft size={24} />
-            </button>
-
+        <Header onBackClick={onBackClick}>
             <div className="header-machine-info">
                 <div className="machine-title-row">
                     <Cpu size={18} className="machine-hardware-icon" />
@@ -48,10 +41,6 @@ export default function ChatWindowHeader({ activeMachine, onBackClick }) {
                     {activeMachine?.status && renderStatusBadge(activeMachine.status)}
                 </div>
             </div>
-
-            <div className="header-operator-profile" title="Operator Profile">
-                <User size={20} />
-            </div>
-        </header>
-    )
+        </Header>
+    );
 }
