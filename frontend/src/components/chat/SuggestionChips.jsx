@@ -50,6 +50,7 @@ export default function SuggestionChips({ onSuggestionClick }) {
                     className="suggestion-chip-btn"
                     onClick={() => handleChipClick(chip)}
                     aria-label={chip.label}
+                    disabled={true}
                 >
                     <span className="chip-icon">{chip.icon}</span>
                     <span className="chip-label">{chip.label}</span>

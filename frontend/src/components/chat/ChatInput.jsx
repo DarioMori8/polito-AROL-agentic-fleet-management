@@ -162,7 +162,7 @@ export default function ChatInput({
                     variant="outline"
                     className="input-action-btn attachment-btn"
                     onClick={triggerFileInput}
-                    disabled={disabled}
+                    disabled={true}
                     type="button"
                     title="Attach Image/Document"
                     aria-label="Attach Image or Document"
@@ -195,6 +195,6 @@ export default function ChatInput({
                     <Send size={20} />
                 </Button>
             </div>
-        </form>
+        </form >
     );
 }
