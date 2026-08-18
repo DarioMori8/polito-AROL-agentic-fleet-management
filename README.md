@@ -2,7 +2,7 @@
 
 Piattaforma conversazionale che assiste gli operatori di stabilimento tramite un
 insieme di agenti specializzati: documentazione tecnica delle macchine, dati
-commerciali, e in prospettiva telemetria e allarmi.
+commerciali, telemetria, allarmi e manutenzione.
 
 ## Servizi
 
@@ -10,7 +10,7 @@ commerciali, e in prospettiva telemetria e allarmi.
 |---|---|---|
 | `frontend` | 8080 | UI operatore (scansione QR, chat, viewer manuali) |
 | `backend` | 8000 | API, orchestratore LangGraph, anagrafica macchine |
-| `agents` | 8001 | Manuals Agent (RAG su Chroma) e Docs Agent |
+| `agents` | 8001 | Manuals Agent, Docs Agent e IoT Agent |
 | `mock-backoffice` | 8003 | Sta al posto dell'ERP/CRM: preventivi, ordini, documenti |
 | `langfuse-web` | 3000 | Tracing delle esecuzioni dell'orchestratore |
 
@@ -203,7 +203,7 @@ o il `machine_id` non corrisponde a nessun manuale indicizzato.
 
 ## Per lo sviluppo in locale
 
-Per lavorare sugli agenti fuori da Docker (venv, uvicorn, test dei due agenti
+Per lavorare sugli agenti fuori da Docker (venv, uvicorn, test dei tre agenti
 uno per uno) la guida completa è in [`agents/README.md`](agents/README.md).
 
 ---
@@ -278,6 +278,9 @@ lo stack — ma non ha dati da servire.
 | `GET /machines` | la flotta, con serial, modello e azienda |
 | `GET /machines/{machine_id}` | dettaglio macchina, configurazione as-built e specifiche del modello |
 | `GET /machines/{machine_id}/health` | sintesi operativa su una finestra temporale: uptime, produzione, temperatura, allarmi ricorrenti |
+| `GET /machines/{machine_id}/telemetry` | ricerca limitata degli snapshot IoT con filtri temporali e di stato |
+| `GET /machines/{machine_id}/alarms` | ricerca degli eventi di allarme per data, severità, stato o codice |
+| `GET /machines/{machine_id}/maintenance-tickets` | ricerca dei ticket per data, stato, priorità o allarme collegato |
 | `GET /companies/{company_id}/orders` | ordini del cliente, con le righe e il totale della revisione approvata |
 | `GET /companies/{company_id}/quotes` | preventivi del cliente, con lo storico revisioni, stato e importo correnti |
 

@@ -36,6 +36,7 @@ services:
       CHROMA_PATH: ./data/chroma
       MANUALS_PATH: /data/manuals
       DOCS_SERVICE_URL: http://mock-backoffice:8003 # service name
+      IOT_SERVICE_URL: http://mock-backoffice:8003
     extra_hosts:
       - "host.docker.internal:host-gateway" # required on Linux, harmless elsewhere
     volumes:

@@ -14,14 +14,26 @@ here, once, so that no caller has to rediscover them:
 
 import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 import load_dataset
 
 DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = DATA_DIR / "backoffice.db"
+
+WindowHours = Annotated[int, Query(ge=1, le=720)]
+ResultLimit = Annotated[int, Query(ge=1, le=100)]
+OperationalStatus = Literal[
+    "Running", "Alarm", "Idle", "Stopped", "Maintenance", "Size change"
+]
+AlarmSeverity = Literal["Critical", "High", "Medium", "Low"]
+AlarmStatus = Literal["Open", "Acknowledged", "Resolved"]
+TicketStatus = Literal["Open", "In progress", "Waiting for parts", "Resolved", "Closed"]
+TicketPriority = Literal["Critical", "High", "Medium", "Low"]
 
 
 @asynccontextmanager
@@ -82,6 +94,89 @@ def _require_machine(conn: sqlite3.Connection, machine_id: str) -> dict:
     if machine is None:
         raise HTTPException(status_code=404, detail=f"Unknown machine: {machine_id}")
     return dict(machine)
+
+
+def _normalise_timestamp(value: str | None, field_name: str) -> str | None:
+    """Validate an ISO timestamp and return the format used by the workbook."""
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be an ISO-8601 date or timestamp",
+        ) from exc
+
+    if len(value.strip()) == 10 and field_name == "to_timestamp":
+        return parsed.strftime("%Y-%m-%dT23:59")
+    return parsed.strftime("%Y-%m-%dT%H:%M")
+
+
+def _latest_telemetry_timestamp(conn: sqlite3.Connection, machine_id: str) -> str:
+    row = conn.execute(
+        "SELECT MAX(timestamp) AS timestamp FROM TelemetrySnapshots WHERE machineId = ?",
+        (machine_id,),
+    ).fetchone()
+    if row["timestamp"] is None:
+        raise HTTPException(status_code=404, detail=f"No telemetry for {machine_id}")
+    return row["timestamp"]
+
+
+def _time_bounds(
+    conn: sqlite3.Connection,
+    machine_id: str,
+    window_hours: int | None,
+    from_timestamp: str | None,
+    to_timestamp: str | None,
+) -> tuple[str | None, str | None]:
+    """Resolve explicit bounds or a dataset-relative rolling window.
+
+    The synthetic stream ends on 2026-08-04. Rolling windows must therefore be
+    anchored to that machine's newest snapshot rather than to wall-clock time.
+    Explicit bounds take precedence and are useful for historical questions.
+    """
+    start = _normalise_timestamp(from_timestamp, "from_timestamp")
+    end = _normalise_timestamp(to_timestamp, "to_timestamp")
+    if start is not None or end is not None:
+        return start, end
+
+    if window_hours is None:
+        return None, None
+
+    latest = _latest_telemetry_timestamp(conn, machine_id)
+    start_row = conn.execute(
+        "SELECT strftime('%Y-%m-%dT%H:%M', datetime(?, ?)) AS timestamp",
+        (latest, f"-{window_hours - 1} hours"),
+    ).fetchone()
+    return start_row["timestamp"], latest
+
+
+def _append_time_filters(
+    sql: str,
+    params: list,
+    start: str | None,
+    end: str | None,
+    column: str = "timestamp",
+) -> tuple[str, list]:
+    if start is not None:
+        sql += f" AND {column} >= ?"
+        params.append(start)
+    if end is not None:
+        sql += f" AND {column} <= ?"
+        params.append(end)
+    return sql, params
+
+
+def _normalise_date(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(value).date().isoformat()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"{field_name} must be an ISO-8601 date"
+        ) from exc
 
 
 #  Machine registry
@@ -309,56 +404,79 @@ def company_quotes(
 #  Operational domain
 
 
-# Example of the shape the operational endpoints should take: the aggregation
-# happens in SQL and the response carries an answer, not rows. A month of hourly
-# telemetry is 720 rows per machine — it could never be handed to a model
-# running on a few thousand tokens of context.
 @app.get("/machines/{machine_id}/health")
-def machine_health(machine_id: str, window_hours: int = 168):
-    """Condensed health picture of one machine over the last `window_hours`."""
+def machine_health(machine_id: str, window_hours: WindowHours = 168):
+    """Condensed health picture, anchored to the newest synthetic snapshot."""
     with _db() as conn:
         _require_machine(conn, machine_id)
+        window_start, window_end = _time_bounds(
+            conn, machine_id, window_hours, None, None
+        )
 
-        # The window is anchored to the most recent snapshot of this machine,
-        # not to the current time: the dataset stops on 2026-08-04, so a window
-        # measured from now() would always come back empty.
-        # strftime re-normalises the result, because datetime() separates date
-        # and time with a space while the dataset uses "T" — comparing the two
-        # formats as strings silently shifts the boundary by a day.
-        window = conn.execute(
+        machine = conn.execute(
             """
-            SELECT MAX(timestamp) AS window_end,
-                   strftime('%Y-%m-%dT%H:%M', datetime(MAX(timestamp), ?)) AS window_start
-            FROM TelemetrySnapshots WHERE machineId = ?
+            SELECT m.configurationProfile AS configuration_profile,
+                   mm.modelCode AS model_code
+            FROM Machines m JOIN MachineModels mm ON mm.modelId = m.modelId
+            WHERE m.machineId = ?
             """,
-            (f"-{window_hours} hours", machine_id),
+            (machine_id,),
         ).fetchone()
 
-        if window["window_end"] is None:
-            raise HTTPException(status_code=404, detail=f"No telemetry for {machine_id}")
-
-        bounds = (machine_id, window["window_start"])
+        bounds = (machine_id, window_start, window_end)
+        latest = conn.execute(
+            """
+            SELECT telemetryId AS telemetry_id, timestamp,
+                   operationalStatus AS operational_status,
+                   productionRateBph AS production_rate_bph,
+                   uptimePercentage AS uptime_percentage,
+                   alarmCount AS alarm_count, temperatureC AS temperature_c,
+                   energyKwh AS energy_kwh, healthNote AS health_note
+            FROM TelemetrySnapshots
+            WHERE machineId = ? ORDER BY timestamp DESC LIMIT 1
+            """,
+            (machine_id,),
+        ).fetchone()
 
         telemetry = conn.execute(
             """
             SELECT COUNT(*)                        AS snapshots,
                    ROUND(AVG(uptimePercentage), 1) AS avg_uptime_pct,
                    ROUND(AVG(productionRateBph))   AS avg_production_bph,
+                   ROUND(AVG(CASE WHEN operationalStatus = 'Running'
+                                  THEN productionRateBph END))
+                                                      AS avg_running_production_bph,
                    MAX(productionRateBph)          AS peak_production_bph,
+                   ROUND(AVG(temperatureC), 1)     AS avg_temperature_c,
                    MAX(temperatureC)               AS max_temperature_c,
-                   ROUND(SUM(energyKwh), 1)        AS total_energy_kwh
+                   ROUND(SUM(energyKwh), 1)        AS total_energy_kwh,
+                   SUM(alarmCount)                 AS alarm_events
             FROM TelemetrySnapshots
-            WHERE machineId = ? AND timestamp >= ?
+            WHERE machineId = ? AND timestamp >= ? AND timestamp <= ?
             """,
             bounds,
         ).fetchone()
+
+        status_rows = _rows(
+            conn,
+            """
+            SELECT operationalStatus AS status, COUNT(*) AS hours
+            FROM TelemetrySnapshots
+            WHERE machineId = ? AND timestamp >= ? AND timestamp <= ?
+            GROUP BY operationalStatus ORDER BY hours DESC, status
+            """,
+            bounds,
+        )
+        snapshots = telemetry["snapshots"]
+        for row in status_rows:
+            row["percentage"] = round(row["hours"] * 100 / snapshots, 1) if snapshots else 0
 
         top_alarms = _rows(
             conn,
             """
             SELECT alarmCode, severity, COUNT(*) AS count
             FROM Alarms
-            WHERE machineId = ? AND timestamp >= ?
+            WHERE machineId = ? AND timestamp >= ? AND timestamp <= ?
             GROUP BY alarmCode, severity
             ORDER BY count DESC, alarmCode
             LIMIT 5
@@ -371,22 +489,225 @@ def machine_health(machine_id: str, window_hours: int = 168):
             SELECT COUNT(*)                                              AS total,
                    SUM(CASE WHEN alarmStatus = 'Open' THEN 1 ELSE 0 END) AS still_open
             FROM Alarms
-            WHERE machineId = ? AND timestamp >= ?
+            WHERE machineId = ? AND timestamp >= ? AND timestamp <= ?
             """,
             bounds,
         ).fetchone()
 
     return {
         "machine_id": machine_id,
+        "machine": dict(machine),
         "window": {
-            "from": window["window_start"],
-            "to": window["window_end"],
+            "from": window_start,
+            "to": window_end,
             "hours": window_hours,
         },
+        "latest": dict(latest),
         "telemetry": dict(telemetry),
+        "operational_statuses": status_rows,
         "alarms": {
             "total": alarm_totals["total"],
-            "still_open": alarm_totals["still_open"],
+            "still_open": alarm_totals["still_open"] or 0,
             "top_codes": top_alarms,
         },
+    }
+
+
+@app.get("/machines/{machine_id}/telemetry")
+def search_telemetry(
+    machine_id: str,
+    window_hours: WindowHours | None = 24,
+    from_timestamp: str | None = None,
+    to_timestamp: str | None = None,
+    operational_status: OperationalStatus | None = None,
+    limit: ResultLimit = 24,
+):
+    """Search bounded telemetry rows and include aggregates for the same filter."""
+    with _db() as conn:
+        _require_machine(conn, machine_id)
+        start, end = _time_bounds(
+            conn, machine_id, window_hours, from_timestamp, to_timestamp
+        )
+
+        where = " WHERE machineId = ?"
+        params: list = [machine_id]
+        where, params = _append_time_filters(where, params, start, end)
+        if operational_status:
+            where += " AND operationalStatus = ?"
+            params.append(operational_status)
+
+        summary = conn.execute(
+            f"""
+            SELECT COUNT(*) AS matched_snapshots,
+                   ROUND(AVG(uptimePercentage), 1) AS avg_uptime_pct,
+                   ROUND(AVG(productionRateBph)) AS avg_production_bph,
+                   MAX(productionRateBph) AS peak_production_bph,
+                   ROUND(AVG(temperatureC), 1) AS avg_temperature_c,
+                   MAX(temperatureC) AS max_temperature_c,
+                   ROUND(SUM(energyKwh), 1) AS total_energy_kwh,
+                   SUM(alarmCount) AS alarm_events
+            FROM TelemetrySnapshots {where}
+            """,
+            tuple(params),
+        ).fetchone()
+
+        rows = _rows(
+            conn,
+            f"""
+            SELECT telemetryId AS telemetry_id, timestamp,
+                   operationalStatus AS operational_status,
+                   productionRateBph AS production_rate_bph,
+                   uptimePercentage AS uptime_percentage,
+                   alarmCount AS alarm_count, temperatureC AS temperature_c,
+                   energyKwh AS energy_kwh, healthNote AS health_note
+            FROM TelemetrySnapshots {where}
+            ORDER BY timestamp DESC LIMIT ?
+            """,
+            tuple([*params, limit]),
+        )
+
+    return {
+        "machine_id": machine_id,
+        "window": {"from": start, "to": end, "hours": window_hours},
+        "filters": {"operational_status": operational_status},
+        "summary": dict(summary),
+        "results": rows,
+    }
+
+
+@app.get("/machines/{machine_id}/alarms")
+def search_alarms(
+    machine_id: str,
+    window_hours: WindowHours | None = 168,
+    from_timestamp: str | None = None,
+    to_timestamp: str | None = None,
+    severity: AlarmSeverity | None = None,
+    alarm_status: AlarmStatus | None = Query(None, alias="status"),
+    alarm_code: str | None = None,
+    limit: ResultLimit = 50,
+):
+    """Search alarm history without ever widening beyond the requested machine."""
+    with _db() as conn:
+        _require_machine(conn, machine_id)
+        start, end = _time_bounds(
+            conn, machine_id, window_hours, from_timestamp, to_timestamp
+        )
+
+        where = " WHERE machineId = ?"
+        params: list = [machine_id]
+        where, params = _append_time_filters(where, params, start, end)
+        if severity:
+            where += " AND severity = ?"
+            params.append(severity)
+        if alarm_status:
+            where += " AND alarmStatus = ?"
+            params.append(alarm_status)
+        if alarm_code:
+            where += " AND alarmCode = ?"
+            params.append(alarm_code.upper())
+
+        total = conn.execute(
+            f"SELECT COUNT(*) AS count FROM Alarms {where}", tuple(params)
+        ).fetchone()["count"]
+        by_severity = _rows(
+            conn,
+            f"""SELECT severity, COUNT(*) AS count FROM Alarms {where}
+                GROUP BY severity ORDER BY CASE severity
+                    WHEN 'Critical' THEN 1 WHEN 'High' THEN 2
+                    WHEN 'Medium' THEN 3 ELSE 4 END""",
+            tuple(params),
+        )
+        by_status = _rows(
+            conn,
+            f"""SELECT alarmStatus AS status, COUNT(*) AS count FROM Alarms {where}
+                GROUP BY alarmStatus ORDER BY status""",
+            tuple(params),
+        )
+        rows = _rows(
+            conn,
+            f"""
+            SELECT alarmId AS alarm_id, timestamp, alarmCode AS alarm_code,
+                   severity, alarmStatus AS status
+            FROM Alarms {where} ORDER BY timestamp DESC LIMIT ?
+            """,
+            tuple([*params, limit]),
+        )
+
+    return {
+        "machine_id": machine_id,
+        "window": {"from": start, "to": end, "hours": window_hours},
+        "filters": {
+            "severity": severity,
+            "status": alarm_status,
+            "alarm_code": alarm_code,
+        },
+        "summary": {
+            "matched_alarms": total,
+            "by_severity": by_severity,
+            "by_status": by_status,
+        },
+        "results": rows,
+    }
+
+
+@app.get("/machines/{machine_id}/maintenance-tickets")
+def search_maintenance_tickets(
+    machine_id: str,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    ticket_status: TicketStatus | None = Query(None, alias="status"),
+    priority: TicketPriority | None = None,
+    alarm_id: str | None = None,
+    limit: ResultLimit = 50,
+):
+    """Search operational service records, including tickets without an alarm."""
+    with _db() as conn:
+        _require_machine(conn, machine_id)
+        start = _normalise_date(from_date, "from_date")
+        end = _normalise_date(to_date, "to_date")
+
+        where = " WHERE machineId = ?"
+        params: list = [machine_id]
+        if start:
+            where += " AND createdDate >= ?"
+            params.append(start)
+        if end:
+            where += " AND createdDate <= ?"
+            params.append(end)
+        if ticket_status:
+            where += " AND ticketStatus = ?"
+            params.append(ticket_status)
+        if priority:
+            where += " AND priority = ?"
+            params.append(priority)
+        if alarm_id:
+            where += " AND alarmId = ?"
+            params.append(alarm_id.upper())
+
+        total = conn.execute(
+            f"SELECT COUNT(*) AS count FROM MaintenanceTickets {where}", tuple(params)
+        ).fetchone()["count"]
+        rows = _rows(
+            conn,
+            f"""
+            SELECT ticketId AS ticket_id, alarmId AS alarm_id,
+                   ticketType AS ticket_type, ticketStatus AS status,
+                   priority, createdDate AS created_date, ownerRole AS owner_role
+            FROM MaintenanceTickets {where}
+            ORDER BY createdDate DESC, ticketId DESC LIMIT ?
+            """,
+            tuple([*params, limit]),
+        )
+
+    return {
+        "machine_id": machine_id,
+        "filters": {
+            "from_date": start,
+            "to_date": end,
+            "status": ticket_status,
+            "priority": priority,
+            "alarm_id": alarm_id,
+        },
+        "summary": {"matched_tickets": total},
+        "results": rows,
     }
