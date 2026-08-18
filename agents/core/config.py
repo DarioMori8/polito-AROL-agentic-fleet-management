@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # ingestion runs inside the container; override it when running locally.
     MANUALS_PATH: str = "/data/manuals"
     DOCS_SERVICE_URL: str = "http://localhost:8003"
+    IOT_SERVICE_URL: str = "http://localhost:8003"
 
 
 settings = Settings()

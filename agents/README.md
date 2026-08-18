@@ -1,13 +1,14 @@
 # Agents
 
-Questo servizio contiene **due agenti**, entrambi esposti come endpoint HTTP:
+Questo servizio contiene **tre agenti**, tutti esposti come endpoint HTTP:
 
 | Agente | Endpoint | A cosa risponde | Fonte dati |
 |---|---|---|---|
 | **Manuals Agent** | `POST /agents/manuals/search` | Domande sul manuale tecnico della macchina | PDF indicizzati in Chroma (locale) |
 | **Docs Agent** | `POST /agents/docs/search` | Domande su preventivi, ordini e documenti contrattuali | servizio `mock-backoffice` via HTTP |
+| **IoT Agent** | `POST /agents/iot/search` | Telemetria, stato operativo, allarmi e ticket di manutenzione | servizio `mock-backoffice` via HTTP |
 
-Il `mock-backoffice` (step 8) serve a **entrambi**: il Docs Agent lo interroga a ogni domanda, il Manuals Agent solo durante l'ingestion, per risolvere il serial number del nome file nel `machineId` della macchina. In più il Manuals Agent ha bisogno dei manuali e della loro indicizzazione (step 7 e 9).
+Il `mock-backoffice` serve a tutti: Docs e IoT lo interrogano a ogni domanda; il Manuals Agent lo usa durante l'ingestion per risolvere il serial number nel `machineId`.
 
 ## Prerequisiti
 
@@ -106,6 +107,7 @@ MAX_ITERATIONS=5
 CHROMA_PATH=./data/chroma
 MANUALS_PATH=../data/manuals
 DOCS_SERVICE_URL=http://localhost:8003
+IOT_SERVICE_URL=http://localhost:8003
 ```
 
 Se hai scaricato un modello di chat diverso al punto 2, aggiorna `OLLAMA_MODEL` di conseguenza. Gli altri valori puoi lasciarli come sono.
@@ -355,6 +357,153 @@ Risposta attesa: `QTE-2026-0010`, per una linea nuova. `CMP-005` è l'azienda ch
 ```
 
 Il campo `kind` dice da quale fonte arriva ogni elemento, così il frontend può renderizzare un ordine come tabella e un preventivo come storico di revisioni. Se `sources` è vuoto e `confidence` è `0.0`, l'agente non ha trovato nulla e te lo dice onestamente invece di inventare (comportamento voluto).
+
+## 13. Testare l'IoT Agent
+
+L'IoT Agent risponde alle domande sui dati operativi di **una macchina**:
+
+- stato e ultimo snapshot disponibile;
+- produzione, uptime produttivo, temperatura ed energia;
+- distribuzione degli stati operativi in una finestra temporale;
+- eventi di allarme, inclusi codice, severità e stato;
+- ticket di manutenzione e loro eventuale collegamento a un allarme.
+
+È esposto direttamente dal servizio `agents`:
+
+```text
+POST /agents/iot/search
+```
+
+Al momento non è registrato nell'orchestratore LangGraph del `backend`: questa
+implementazione riguarda solamente `agents`, `mock-backoffice` e i contratti
+condivisi. Il backend potrà integrarlo in un secondo momento senza modificare il
+contratto HTTP dell'agente.
+
+### I cinque tool
+
+| Tool | Quando viene usato | Endpoint del mock-backoffice |
+|---|---|---|
+| `analyze_machine_health` | Quadro generale, ultimo stato e KPI su 24 ore, una settimana o un mese | `GET /machines/{machine_id}/health` |
+| `search_telemetry` | Letture orarie di un periodo o di uno specifico stato operativo | `GET /machines/{machine_id}/telemetry` |
+| `search_alarms` | Allarmi aperti, storici, per severità o per codice | `GET /machines/{machine_id}/alarms` |
+| `search_maintenance` | Ticket, attività aperte, priorità, responsabile o ticket legato a un allarme | `GET /machines/{machine_id}/maintenance-tickets` |
+| `analyze_alarm_ticket_coverage` | Correla gli allarmi ai ticket e mostra quali sono coperti, quali no, stato, priorità e responsabile | Combina `/alarms` e `/maintenance-tickets` |
+
+La separazione è intenzionale: per una domanda generale l'LLM riceve una
+sintesi SQL compatta; le righe dettagliate vengono caricate solamente quando la
+domanda le richiede. In questo modo non si inseriscono nel contesto tutte le 720
+righe orarie mensili della macchina.
+
+### Come funziona il ciclo interno
+
+L'IoT Agent usa il ciclo comune definito in `core/base_agent.py`:
+
+1. riceve `query` e `machine_id` e costruisce i messaggi system/user;
+2. l'LLM sceglie uno o più dei cinque tool in base alla domanda;
+3. `IoTAgent._execute_tool()` aggiunge il `machine_id` del task;
+4. `core/iot_client.py` traduce la chiamata in una richiesta HTTP al
+   mock-backoffice;
+5. il risultato strutturato viene aggiunto alla conversazione come messaggio
+   `tool`;
+6. l'LLM viene richiamato e può fare un'altra ricerca oppure produrre la
+   risposta finale.
+
+Il ciclo termina normalmente quando l'LLM restituisce un messaggio senza
+`tool_calls`. Non termina automaticamente perché una ricerca è vuota o perché
+esiste un valore di confidence: dopo ogni risultato è sempre il modello a
+decidere se raffinare la ricerca o rispondere. `MAX_ITERATIONS` rimane solamente
+il limite di sicurezza esterno.
+
+Il `machine_id` non compare negli schemi dei tool visibili all'LLM. Viene preso
+dal `SearchIoTTask`, quindi il modello può scegliere intervallo e filtri ma non
+può cambiare macchina o allargare la ricerca alla flotta.
+
+### Semantica temporale e dei KPI
+
+Il dataset è sintetico e termina il **4 agosto 2026**. Per questo “ultime 24
+ore” significa le 24 ore precedenti all'ultimo snapshot disponibile della
+macchina, non le 24 ore precedenti all'orologio del server. La risposta include
+sempre gli estremi reali della finestra.
+
+Inoltre:
+
+- `uptimePercentage` misura la quota dell'ora trascorsa producendo, non la salute
+  generale della macchina;
+- `productionRateBph` e uptime sono zero quando la macchina non produce;
+- il rate nominale va letto da `Machines.configurationProfile`, perché due
+  macchine dello stesso modello possono avere configurazioni diverse;
+- `alarmCount` conta gli eventi dell'ora e gli endpoint `/alarms` ne restituiscono
+  il dettaglio;
+- un ticket può avere `alarm_id = null`: non tutte le manutenzioni nascono da un
+  allarme.
+
+### Esempio
+
+```bash
+curl -X POST http://localhost:8001/agents/iot/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Quali allarmi aperti ci sono e hanno già un ticket?","machine_id":"MCH-0007"}'
+```
+
+Per questa domanda l'agente usa `analyze_alarm_ticket_coverage`, che cerca gli
+allarmi con `status = Open`, recupera i ticket della stessa macchina e correla
+gli elementi tramite `alarm_id`. La correlazione avviene nel codice, non nel
+modello.
+
+La risposta ha questa forma:
+
+```json
+{
+  "answer": "...",
+  "observations": [
+    {
+      "kind": "alarms",
+      "data": {
+        "machine_id": "MCH-0007",
+        "summary": {
+          "with_ticket": 1,
+          "without_ticket": 1,
+          "ticket_scan_complete": true
+        },
+        "alarms": [
+          {
+            "alarm_id": "ALM-0228",
+            "has_ticket": true,
+            "tickets": [
+              {
+                "ticket_id": "TKT-0001",
+                "status": "Open",
+                "priority": "High",
+                "owner_role": "Field Service Engineer"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "confidence": 1.0
+}
+```
+
+`observations` conserva esattamente gli aggregati e le righe consultate. `kind`
+può essere `health`, `telemetry`, `alarms` o `maintenance`. Se nessun tool ha
+prodotto dati strutturati, la lista è vuota e `confidence` vale `0.0`.
+
+### Contratti condivisi
+
+I modelli Pydantic sono separati per dominio in `shared/contracts/contracts/`:
+
+```text
+manuals.py   SearchManualTask, Citation, SearchManualResponse
+docs.py      SearchDocsTask, Order, Quote, Source, SearchDocsResponse
+iot.py       SearchIoTTask, IoTObservation, SearchIoTResponse
+```
+
+`contracts/__init__.py` li riesporta, quindi il codice applicativo continua a
+usare import stabili come `from contracts import SearchIoTTask`. La separazione
+evita che il file `manuals.py` diventi il contenitore di contratti appartenenti
+a domini commerciali o IoT diversi.
 
 ## Troubleshooting
 
