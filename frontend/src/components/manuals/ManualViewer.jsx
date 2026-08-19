@@ -105,6 +105,13 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         if (currentPage > numPages) setCurrentPage(1);
     };
 
+    const onDocumentLoadError = (error) => {
+        console.error('PDF load failed', {
+            url: activePdfUrl,
+            message: error?.message || String(error)
+        });
+    };
+
     // 2. Build the viewer card data: prioritize live RAG citation snippets, then show a generic placeholder
     const buildPageCard = () => {
         // 1. If the user navigated to this exact page via an AI citation and we have a real RAG snippet, show it
@@ -366,6 +373,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                         <Document
                             file={activePdfUrl}
                             onLoadSuccess={onDocumentLoadSuccess}
+                            onLoadError={onDocumentLoadError}
                             loading={<div className="pdf-loading">Caricamento PDF in corso...</div>}
                             error={<div className="pdf-error">Impossibile caricare il file PDF.<br /><small>{activePdfUrl}</small></div>}
                         >
