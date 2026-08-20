@@ -16,7 +16,11 @@ class Settings(BaseSettings):
 
     MAX_ITERATIONS: int = 5
     CHROMA_PATH: str = "./data/chroma"
+    # Read-only mount of the shared manuals volume. Absolute because the
+    # ingestion runs inside the container; override it when running locally.
+    MANUALS_PATH: str = "/data/manuals"
     DOCS_SERVICE_URL: str = "http://localhost:8003"
+    IOT_SERVICE_URL: str = "http://localhost:8003"
 
 
 settings = Settings()

@@ -2,18 +2,19 @@ from contracts.manuals import (
     SearchManualTask,
     SearchManualResponse,
     Citation,
+)
+from contracts.docs import (
     SearchDocsTask,
     SearchDocsResponse,
-    Document,
-    Item,
+    OrderLine,
     Order,
-    Revision,
+    QuoteRevision,
     Quote,
-    DocumentSource,
     OrderSource,
     QuoteSource,
     Source,
 )
+from contracts.iot import IoTObservation, SearchIoTResponse, SearchIoTTask
 
 __all__ = [
     "SearchManualTask",
@@ -21,13 +22,14 @@ __all__ = [
     "Citation",
     "SearchDocsTask",
     "SearchDocsResponse",
-    "Document",
-    "Item",
+    "OrderLine",
     "Order",
-    "Revision",
+    "QuoteRevision",
     "Quote",
-    "DocumentSource",
     "OrderSource",
     "QuoteSource",
     "Source",
+    "IoTObservation",
+    "SearchIoTResponse",
+    "SearchIoTTask",
 ]

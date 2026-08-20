@@ -13,10 +13,17 @@ __pycache__/
 .env.*
 !.env.example
 
-# Data / persisted volumes (vector store, sqlite, mock data)
-data/
-*.sqlite3
+# Generated / non-distributable data.
+# Listed one by one on purpose: a bare `data/` would also swallow the seed files
+# in mock-backoffice/data, and git cannot re-include a file once its parent
+# directory is excluded, so a `!` rule would not bring them back.
+# machine manuals: 73 MB, AROL property
+/data/
+# Chroma index, rebuilt by the ingestion
+agents/data/
+# SQLite, rebuilt from the workbook at startup
 *.db
+*.sqlite3
 
 # Node (in case anything outside frontend/ ever needs it)
 node_modules/
