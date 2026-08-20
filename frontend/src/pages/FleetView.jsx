@@ -22,7 +22,7 @@ export default function FleetView() {
 
     // Status mappings: 'online' -> Operating, others -> In Alarm / Under Maintenance
     const filteredFleet = fleet.filter(m => {
-        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.includes(searchQuery);
+        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.toString().includes(searchQuery);
         if (activeFilter === 'all') return matchesSearch;
         if (activeFilter === 'ok') return matchesSearch && (m.status === 'online');
         if (activeFilter === 'alarm') return matchesSearch && (m.status !== 'online');
