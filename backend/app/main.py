@@ -8,7 +8,7 @@ from app.api.v1.chat import router as chat_router
 from app.resources.router import router as resources_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.orchestrator.orchestrator import build_graph, LangGraphOrchestrator
-from app.db.engine import engine, create_db_and_tables
+from app.db.engine import engine, create_db_and_tables, async_session_factory
 from app.db.seed import seed_data
 
 
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     await seed_data()               
 
     async with build_graph() as graph:
-        app.state.orchestrator = LangGraphOrchestrator(graph)
+        app.state.orchestrator = LangGraphOrchestrator(graph, async_session_factory)
         yield
     # --- shutdown
 

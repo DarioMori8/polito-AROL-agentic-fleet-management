@@ -17,6 +17,9 @@ from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, Hist
 from app.config import settings
 from app.orchestrator.agent_registry import AGENT_TOOLS
 from app.orchestrator.base import Orchestrator
+
+from app.resources.repository import DbMachineRepository
+
 SYSTEM_PROMPT = """You are the routing brain of the AROL Customer Platform assistant.
 
 You do not answer technical questions on your own initiative. For every
@@ -177,19 +180,46 @@ def normalize_artifact(artifact: dict) -> list[dict]:
     for citation in artifact.get("citations", []):
         sources.append({"kind": "manual", **citation})
     sources.extend(artifact.get("sources", []))
+    sources.extend(artifact.get("observations", []))
     return sources
 
 
 class LangGraphOrchestrator(Orchestrator):
 
-    def __init__(self, graph):
+    def __init__(self, graph, session_factory):
         # The graph is injected, not fetched: the orchestrator operates on
         # the graph it's given and knows nothing about where it came from
         # (app.state, lifespan, FastAPI). This keeps it free of any web-app
         # dependency and avoids a circular import with main.py.
         self._graph = graph
+        # Same reasoning for the domain DB: the orchestrator receives a
+        # *factory*, not a live session. It opens one only to resolve the
+        # tenant (machine_id -> company_id) and closes it immediately, so
+        # no session ever outlives the streaming generator.
+        self._session_factory = session_factory
+
+
+
+    async def _resolve_company_id(self, machine_id: str) -> str | None:
+        """
+        Resolves the tenant boundary from the machine: which customer company
+        owns this machine. Read from our own domain DB, never from the LLM or
+        the client — it is a security boundary, so it must come from the
+        authoritative source.
+
+        The session is opened and closed here, before the graph runs: a
+        request-scoped session would outlive its context inside the streaming
+        generator, which keeps yielding after the HTTP handler has returned.
+
+        Returns None if the machine is unknown; callers pass that through so
+        that agents which don't need a tenant (manuals, iot) keep working.
+        """
+        async with self._session_factory() as session:
+            machine = await DbMachineRepository(session).get_machine(machine_id)
+        return machine.company_id if machine else None
 
     async def handle(self, request: ChatRequest)-> ChatResponse:
+        company_id = await self._resolve_company_id(request.machine_id)
 
         session_id = request.session_id or str(uuid.uuid4())
 
@@ -206,7 +236,7 @@ class LangGraphOrchestrator(Orchestrator):
             config={
                 "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1,
                 "callbacks": [_langfuse_handler],
-                "configurable": {"thread_id": session_id}
+                "configurable": {"thread_id": session_id, "company_id": company_id},
             },
         )
 
@@ -227,6 +257,8 @@ class LangGraphOrchestrator(Orchestrator):
             / done. The endpoint layer is responsible for serializing these into
             the SSE wire format — this method stays transport-agnostic.
         """
+        company_id = await self._resolve_company_id(request.machine_id)
+
         session_id = request.session_id or str(uuid.uuid4())  
 
         user_content= f"[machine_id: {request.machine_id}]\n{request.query}"
@@ -247,7 +279,7 @@ class LangGraphOrchestrator(Orchestrator):
                 config={
                     "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS*2+1,
                     "callbacks": [_langfuse_handler],
-                    "configurable": {"thread_id": session_id},
+                    "configurable": {"thread_id": session_id, "company_id": company_id},
                 },
                 stream_mode=["messages", "updates"],
             ):

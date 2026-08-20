@@ -30,7 +30,7 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
 # Session factory: produces short-lived AsyncSession objects (one per request).
 # expire_on_commit=False keeps objects usable after commit (so the endpoint can
 # still read an object's fields after the session committed it).
-_async_session_factory = async_sessionmaker(
+async_session_factory = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
 
@@ -48,5 +48,5 @@ async def get_session() -> AsyncIterator[AsyncSession]:
     exactly like get_..._repository. The `async with` guarantees the session
     is closed even if the endpoint raises.
     """
-    async with _async_session_factory() as session:
+    async with async_session_factory() as session:
         yield session

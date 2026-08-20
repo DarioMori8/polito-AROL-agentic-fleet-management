@@ -49,8 +49,16 @@ class HttpAgentClient(AgentClientBase[T]):
         response.raise_for_status()
         return response
 
-    async def search(self, query: str, machine_id: str) -> T:
-        payload = {"query": query, "machine_id": machine_id}
+    async def _request(self, payload: dict) -> T:
+        """
+        Everything that is the same for every agent: POST with retry, mapping
+        of httpx failures onto AgentUnavailableError, and validation against
+        the concrete client's response schema.
+
+        Kept separate from search() so that a client whose task carries extra
+        fields (docs, with its tenant) can build its own payload and still
+        reuse all the transport behaviour.
+        """
         url = f"{self.base_url}{self.path}"
 
         try:
@@ -63,3 +71,7 @@ class HttpAgentClient(AgentClientBase[T]):
             raise AgentUnavailableError(f"{self.agent_name} agent returned an error: {e}") from e
 
         return self.response_schema.model_validate(response.json())
+
+    async def search(self, query: str, machine_id: str) -> T:
+        """Default shape: the two fields every agent task shares."""
+        return await self._request({"query": query, "machine_id": machine_id})

@@ -19,6 +19,7 @@ __pycache__/
 # directory is excluded, so a `!` rule would not bring them back.
 # machine manuals: 73 MB, AROL property
 /data/
+backend/data
 # Chroma index, rebuilt by the ingestion
 agents/data/
 # SQLite, rebuilt from the workbook at startup
