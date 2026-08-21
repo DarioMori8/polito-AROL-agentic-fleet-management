@@ -272,5 +272,7 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 - [ ] **#7 — Drawer ricerca testo nel PDF** `🟡 UX`
   Il componente `SearchDrawer.jsx` esiste già ma va collegato alla logica di ricerca testuale nel `ManualViewer`. Implementare la ricerca full-text nelle pagine del documento aperto usando le API di `react-pdf`, con highlight dei risultati e navigazione tra occorrenze (prev/next).
 
-- [ ] **#8 - Aggiornare sezione frontend del README generale del workspace**
+- [ ] **#8 — Aggiornare sezione frontend del README generale del workspace**
 
+- [ ] **#9 — Autenticazione `machine_id`** `🔴 Sicurezza`
+  Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque conosca un ID può accedere ai dati di quella macchina — non c'è verifica di autenticazione. Aggiungere un meccanismo di verifica (es. token JWT, sessione operatore) prima di caricare i dati di una macchina in `LandingQR` e `WorkspaceWrapper`.

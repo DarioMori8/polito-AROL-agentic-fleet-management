@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -39,4 +40,12 @@ app.include_router(resources_router)
 # Serve PDF manuals as static files.
 # The Manual.url field in the schema points to /static/manuals/<filename>.
 # In Docker this resolves to the shared ./data/manuals volume (read-only).
-app.mount("/static/manuals", StaticFiles(directory="/data/manuals"), name="manuals")
+# Locally, set MANUALS_PATH in backend/.env to point to the data/manuals folder.
+_manuals_path = os.environ.get("MANUALS_PATH", "/data/manuals")
+if os.path.isdir(_manuals_path):
+    app.mount("/static/manuals", StaticFiles(directory=_manuals_path), name="manuals")
+else:
+    logging.warning(
+        f"MANUALS_PATH '{_manuals_path}' not found — /static/manuals not mounted. "
+        "Set MANUALS_PATH in backend/.env to enable PDF serving."
+    )

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useMachine } from '@/context/MachineContext';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -9,12 +10,11 @@ import SearchDrawer from './SearchDrawer';
 import DocumentArea from './DocumentArea';
 import AIReferenceBanner from './AIReferenceBanner';
 
-// Configure PDF.js worker — use local bundle via Vite's import.meta.url
-// to avoid version mismatches with CDN-served workers.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-).toString();
+// Configure PDF.js worker via Vite's ?url import.
+// Using ?url ensures Vite includes the file as a proper JS asset and serves it
+// with Content-Type: application/javascript — avoiding the MIME type error that
+// occurs when the worker is loaded as a generic binary (application/octet-stream).
+pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 /**
  * ManualViewer Component (Context Aware & Dynamic)
