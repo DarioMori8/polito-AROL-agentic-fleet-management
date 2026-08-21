@@ -84,7 +84,7 @@ async def search_docs(query: str, machine_id: str, config: RunnableConfig) -> tu
 
 
 
-from app.clients.IoT_client import IoTClient
+from app.clients.iot_client import IoTClient
 
 iot_client = IoTClient()
 
