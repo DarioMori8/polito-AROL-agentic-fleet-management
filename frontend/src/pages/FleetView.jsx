@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useMachine } from '../context/MachineContext';
+import '../styles/FleetView.css';
 
 /**
  * FleetView Component
@@ -21,7 +22,7 @@ export default function FleetView() {
 
     // Status mappings: 'online' -> Operating, others -> In Alarm / Under Maintenance
     const filteredFleet = fleet.filter(m => {
-        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.includes(searchQuery);
+        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.toString().includes(searchQuery);
         if (activeFilter === 'all') return matchesSearch;
         if (activeFilter === 'ok') return matchesSearch && (m.status === 'online');
         if (activeFilter === 'alarm') return matchesSearch && (m.status !== 'online');

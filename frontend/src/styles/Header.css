@@ -1,0 +1,49 @@
+/* ==========================================================================
+   HEADER COMPONENT — Reusable app-wide header shell
+   Imported directly by Header.jsx — no implicit dependency on ChatWindow.css
+   ========================================================================== */
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  height: 64px;
+  background-color: var(--arol-blue);
+  color: var(--white);
+  padding: 0 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  box-sizing: border-box;
+}
+
+.header-back-btn {
+  background: transparent;
+  border: none;
+  color: var(--white);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  min-height: 48px;
+  /* Touch target */
+  min-width: 48px;
+  border-radius: 50%;
+  transition: background-color 0.15s;
+}
+
+.header-back-btn:active {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.header-operator-profile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.15);
+  color: var(--white);
+  flex-shrink: 0;
+  margin-left: 12px;
+}

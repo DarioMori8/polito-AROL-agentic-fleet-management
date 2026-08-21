@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, BookOpen, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { MessageSquare, BookOpen, QrCode } from 'lucide-react';
 import { useMachine } from '../context/MachineContext';
 import ChatWindow from '../components/chat/ChatWindow';
 import ManualViewer from '../components/manuals/ManualViewer';
@@ -18,6 +19,8 @@ export default function ChatWorkspace({
     onBackClick,
     onSuggestionClick
 }) {
+    const navigate = useNavigate()
+
     const { activeMachine, isScanned, clearMachine } = useMachine();
 
     // Mobile Tab State: 'chat' | 'manuals'
@@ -63,10 +66,8 @@ export default function ChatWorkspace({
     };
 
     const handleNewScan = () => {
+        navigate('/scanner');
         clearMachine();
-        if (onBackClick) {
-            onBackClick(); // Redirects to fleet or camera view
-        }
     };
 
     return (
@@ -176,7 +177,7 @@ export default function ChatWorkspace({
                             onClick={handleNewScan}
                             aria-label="Nuova Scansione"
                         >
-                            <RotateCcw size={20} />
+                            <QrCode size={20} />
                             <span className="tab-label-text">Nuova Scansione</span>
                         </button>
                     </nav>

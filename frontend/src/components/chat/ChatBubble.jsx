@@ -19,6 +19,7 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
 
     // Check if the message is from the user
     const isUser = sender === 'user';
+    const displayText = !isUser && status === 'sending' && !text ? '▍' : text;
 
     // Inline parser: converts **text** → <strong>text</strong>
     const parseBold = (text) => {
@@ -79,7 +80,7 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
                 </span>
 
                 <div className="bubble">
-                    <div className="bubble-text">{renderContent(text)}</div>
+                    <div className="bubble-text">{renderContent(displayText)}</div>
 
                     {/* Interactive citations from Technical Manuals */}
                     {!isUser && citations && citations.length > 0 && (

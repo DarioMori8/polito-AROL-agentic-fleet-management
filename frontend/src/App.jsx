@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router';
 import LandingResolver from './pages/LandingResolver';
 import FleetView from './pages/FleetView';
 import WorkspaceWrapper from './pages/WorkspaceWrapper';
+import MachineScanner from './pages/MachineScanner';
 import './styles/App.css';
 import { MachineProvider } from './context/MachineContext';
 
@@ -23,6 +24,9 @@ export default function App() {
 
             {/* Conversational and Diagnostic Workspace Route */}
             <Route path="/workspace/:id" element={<WorkspaceWrapper />} />
+
+            {/* Machine Scanner Route */}
+            <Route path="/scanner" element={<MachineScanner />} />
           </Routes>
         </div>
       </Router>

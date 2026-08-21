@@ -1,30 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useMachine } from '@/context/MachineContext';
-import {
-    BookOpen,
-    ChevronLeft,
-    ChevronRight,
-    ZoomIn,
-    ZoomOut,
-    Maximize2,
-    Minimize2,
-    Search,
-    Copy,
-    Check,
-    FileText,
-    Sliders
-} from 'lucide-react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import '@/styles/ManualViewer.css';
+import TopToolbar from './TopToolbar';
+import SearchDrawer from './SearchDrawer';
+import DocumentArea from './DocumentArea';
+import AIReferenceBanner from './AIReferenceBanner';
 
-// Configure PDF.js worker — use local bundle via Vite's import.meta.url
-// to avoid version mismatches with CDN-served workers.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-).toString();
+// Configure PDF.js worker via Vite's ?url import.
+// Using ?url ensures Vite includes the file as a proper JS asset and serves it
+// with Content-Type: application/javascript — avoiding the MIME type error that
+// occurs when the worker is loaded as a generic binary (application/octet-stream).
+pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 /**
  * ManualViewer Component (Context Aware & Dynamic)
@@ -248,186 +238,54 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         <div className={`manual-viewer-root ${isFullscreen ? 'is-fullscreen' : ''}`} ref={viewerRef}>
 
             {/* 1. TOP TOOLBAR - Zoom, page navigation, fullscreen (Min 48px Touch Targets) */}
-            <header className="viewer-toolbar">
-                <div className="toolbar-left-group">
-                    <BookOpen className="toolbar-icon" size={18} />
-                    <select
-                        className="document-selector-dropdown"
-                        value={activeDocName}
-                        onChange={handleDocChange}
-                        aria-label="Select Technical Document"
-                    >
-                        {activeManuals.map((m) => (
-                            <option key={m.filename} value={m.filename}>
-                                {m.filename.length > 25 ? `${m.filename.substring(0, 25)}...` : m.filename}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="toolbar-center-navigation">
-                    <button
-                        className="toolbar-nav-btn"
-                        onClick={handlePrevPage}
-                        disabled={currentPage <= 1}
-                        aria-label="Previous Page"
-                    >
-                        <ChevronLeft size={20} />
-                    </button>
-
-                    <div className="page-counter-input-row">
-                        <span className="current-page-tag">Page {currentPage}</span>
-                        <span className="divider-slash">/</span>
-                        <span className="total-pages-tag">{totalPagesCount}</span>
-                    </div>
-
-                    <button
-                        className="toolbar-nav-btn"
-                        onClick={handleNextPage}
-                        disabled={currentPage >= totalPagesCount}
-                        aria-label="Next Page"
-                    >
-                        <ChevronRight size={20} />
-                    </button>
-                </div>
-
-                <div className="toolbar-right-actions">
-                    <button
-                        className={`toolbar-btn search-toggle-btn ${showSearchPanel ? 'active' : ''}`}
-                        onClick={() => setShowSearchPanel(!showSearchPanel)}
-                        title="Search Manual"
-                        aria-label="Search Manual"
-                    >
-                        <Search size={18} />
-                    </button>
-
-                    <div className="zoom-controls">
-                        <button className="toolbar-btn" onClick={handleZoomOut} title="Zoom Out" aria-label="Zoom Out">
-                            <ZoomOut size={16} />
-                        </button>
-                        <span className="zoom-percentage">{zoom}%</span>
-                        <button className="toolbar-btn" onClick={handleZoomIn} title="Zoom In" aria-label="Zoom In">
-                            <ZoomIn size={16} />
-                        </button>
-                    </div>
-
-                    <button className="toolbar-btn fullscreen-btn" onClick={toggleFullscreen} title="Fullscreen View" aria-label="Toggle Fullscreen">
-                        {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                    </button>
-                </div>
-            </header>
+            <TopToolbar
+                activeDocName={activeDocName}
+                activeManuals={activeManuals}
+                handleDocChange={handleDocChange}
+                currentPage={currentPage}
+                totalPagesCount={totalPagesCount}
+                handlePrevPage={handlePrevPage}
+                handleNextPage={handleNextPage}
+                showSearchPanel={showSearchPanel}
+                setShowSearchPanel={setShowSearchPanel}
+                zoom={zoom}
+                handleZoomOut={handleZoomOut}
+                handleZoomIn={handleZoomIn}
+                isFullscreen={isFullscreen}
+                toggleFullscreen={toggleFullscreen}
+            />
 
             {/* 2. CONTEXTUAL SEARCH DRAWER */}
-            {showSearchPanel && (
-                <aside className="search-drawer-overlay">
-                    <div className="search-drawer-header">
-                        <h3>Search In Documents</h3>
-                        <button className="close-drawer-btn" onClick={() => setShowSearchPanel(false)}>×</button>
-                    </div>
-                    <div className="search-drawer-body">
-                        <div className="search-input-wrapper">
-                            <Search size={16} className="search-pane-icon" />
-                            <input
-                                type="text"
-                                placeholder="Search keywords (e.g. vibration, torque)..."
-                                value={searchQuery}
-                                onChange={handleSearch}
-                                className="search-pane-input"
-                                autoFocus
-                            />
-                        </div>
+            <SearchDrawer
+                showSearchPanel={showSearchPanel}
+                setShowSearchPanel={setShowSearchPanel}
+                searchQuery={searchQuery}
+                handleSearch={handleSearch}
+                searchResults={searchResults}
+                handleJumpToSearchMatch={handleJumpToSearchMatch}
+            />
 
-                        <div className="search-results-list">
-                            {searchQuery && searchResults.length === 0 && (
-                                <div className="search-no-results">No technical matches found.</div>
-                            )}
-                            {searchResults.map((match, idx) => (
-                                <button
-                                    key={idx}
-                                    className="search-match-card"
-                                    onClick={() => handleJumpToSearchMatch(match)}
-                                >
-                                    <span className="match-doc-name">{match.docName} (p. {match.page})</span>
-                                    <span className="match-section-name">{match.section}</span>
-                                    <span className="match-title-text">{match.title}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </aside>
-            )}
 
             {/* 3. CORE DOCUMENT AREA */}
-            <main className="document-scroller-viewport">
-                {/* Dynamic Zoom Wrapper */}
-                <div
-                    className="document-zoom-container"
-                    style={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        padding: '20px'
-                    }}
-                >
-                    {/* PDF Renderer */}
-                    {activePdfUrl ? (
-                        <Document
-                            file={activePdfUrl}
-                            onLoadSuccess={onDocumentLoadSuccess}
-                            onLoadError={onDocumentLoadError}
-                            loading={<div className="pdf-loading">Caricamento PDF in corso...</div>}
-                            error={<div className="pdf-error">Impossibile caricare il file PDF.<br /><small>{activePdfUrl}</small></div>}
-                        >
-                            <Page
-                                pageNumber={currentPage}
-                                scale={zoom / 100}
-                                renderTextLayer={true}
-                                renderAnnotationLayer={true}
-                            />
-                        </Document>
-                    ) : (
-                        <div className="pdf-loading">Nessun manuale selezionato.</div>
-                    )}
-                </div>
-            </main>
+            <DocumentArea
+                activePdfUrl={activePdfUrl}
+                onDocumentLoadSuccess={onDocumentLoadSuccess}
+                currentPage={currentPage}
+                zoom={zoom}
+                highlightSnippet={
+                    selectedCitation?.docName === activeDocName &&
+                        selectedCitation?.page === currentPage
+                        ? selectedCitation.snippet
+                        : null
+                }
+            />
 
             {/* 4. FLOATING AI GROUNDED REFERENCE BANNER */}
-            {selectedCitation && selectedCitation.snippet && (
-                <footer className="ai-grounding-banner" aria-live="polite">
-                    <div className="banner-badge-column">
-                        <span className="banner-pill">AI GROUNDED REFERENCE</span>
-                        <span className="banner-source-details">
-                            {selectedCitation.docName} • Page {selectedCitation.page}
-                        </span>
-                    </div>
-
-                    <div className="banner-snippet-body">
-                        <p className="banner-snippet-text">
-                            "{selectedCitation.snippet}"
-                        </p>
-                    </div>
-
-                    <div className="banner-action-column">
-                        <button
-                            className={`copy-snippet-btn ${copied ? 'copied' : ''}`}
-                            onClick={copySnippetToClipboard}
-                            title="Copy snippet to clipboard"
-                            aria-label="Copy snippet to clipboard"
-                        >
-                            {copied ? (
-                                <>
-                                    <Check size={16} />
-                                    <span>Copied</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Copy size={16} />
-                                    <span>Copy</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </footer>
-            )}
+            {/* <AIReferenceBanner
+                selectedCitation={selectedCitation}
+                copied={copied}
+                copySnippetToClipboard={copySnippetToClipboard}
+            /> */}
         </div>
     );
 }

@@ -81,6 +81,7 @@ export default function WorkspaceWrapper() {
         streamMessage({
             query: messageData.text,
             machineId: id,
+            messageId: aiMessageId,
             onToken: (chunk) => {
                 // Progressively write the text character-by-character
                 setMessages((prev) =>

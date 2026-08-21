@@ -1,201 +1,278 @@
 # AROL Multi-Agent Conversational Ecosystem — Frontend Client
 
-Mobile-first Progressive Web Application (PWA) tailored for on-field maintenance technicians and industrial plant operators. Built on AROL's **Rugged UI** design language, it is optimized for high-contrast visibility and gloved touch interactions on rugged devices (smartphones, tablets, and industrial PMAs).
+Mobile-first Progressive Web Application (PWA) per tecnici di manutenzione e operatori di stabilimento industriale. Costruita sul design language **AROL Rugged UI**, ottimizzata per visibilità ad alto contrasto e interazioni touch con guanti su dispositivi rugged (smartphone, tablet, PMA industriali).
 
-This frontend acts as the user-facing interface for the AROL conversational ecosystem, allowing users to scan machine QR codes, consult an AI-driven multi-agent troubleshooter, stream live LLM diagnostic insights, and view grounded vector DB manual segments alongside interactive CAD blueprints.
+Il frontend è l'interfaccia utente dell'ecosistema conversazionale AROL: permette di scansionare QR code delle macchine, consultare un troubleshooter AI multi-agente, ricevere risposte in streaming SSE token-by-token, e visualizzare i segmenti di manuale recuperati dal RAG (ChromaDB) nel viewer PDF integrato.
 
 ---
 
-## 🛠️ Tech Stack & Key Configurations
+## 🛠️ Tech Stack
 
-| Layer | Technology | Operational Notes |
+| Layer | Tecnologia | Note |
 | :--- | :--- | :--- |
-| **Framework** | React 19 + Vite 8 | Single Page Application (SPA) optimized for low footprint. |
-| **Routing** | React Router DOM v6 | Decoupled landing, fleet tracking, and diagnostic paths. |
-| **Icons** | Lucide React | High-contrast, standardized industrial iconography. |
-| **PWA Layer** | `vite-plugin-pwa` | Manages standalone manifest, assets precaching, and workers. |
-| **Styling** | Vanilla CSS3 | Rigorous, framework-less design tokens for speed and consistency. |
-| **Production Server** | Nginx 1.25 (Alpine) | Serving static optimized assets with SPA routing fallbacks. |
+| **Framework** | React 19 + Vite 8 | SPA ottimizzata per basso footprint mobile |
+| **Routing** | React Router v8 | Route: `/`, `/fleet`, `/machine/:id`, `/workspace/:id`, `/scanner` |
+| **Icons** | Lucide React | Iconografia industriale ad alto contrasto |
+| **PWA Layer** | `vite-plugin-pwa` | Manifest, service worker con `autoUpdate`, icone 192/512px |
+| **Styling** | Vanilla CSS3 | Design token centralizzati in `styles/tokens.css` |
+| **QR Scanner** | `html5-qrcode` | Scansione QR code nativa da fotocamera |
+| **PDF Viewer** | `react-pdf` | Visualizzatore manuali tecnici AROL |
+| **Testing** | Vitest + Playwright | Test Storybook via `@storybook/addon-vitest` |
+| **Component Docs** | Storybook 10 | Dev server su porta `6006` |
+| **Production Server** | Nginx (Alpine) | SPA fallback con `try_files $uri /index.html` |
 
-### Path Aliasing & Expositions
-*   **Path Alias**: `@` mapped to `src/` (e.g., `import ManualViewer from '@/components/manuals/ManualViewer'`).
-*   **Dev Server**: Port `3000`, exposed across local networks (`--host`) to allow on-site testing with physical rugged devices via QR codes.
-
----
-
-## 📐 Industrial Design System (Rugged UI)
-
-Specially designed for hazardous, low-light, or high-glare bottling plant environments. All interactive touch targets are strictly designed to be **$\ge$ 48px** in height and width to support gloved operations (WCAG 2.1 compliance).
-
-### Style Tokens (`App.css` / `Stile del css da seguire`)
-*   `--arol-blue`: `#002D54` — Primary operations, structural frames, and main buttons.
-*   `--arol-sky`: `#407B9E` — Interactive elements, selectors, links, and minor active states.
-*   `--arol-red`: `#C0392B` — Active alarms, threshold exceptions, and critical device failures.
-*   `--arol-green`: `#27AE60` — Normal operations, synchronized status, and healthy telemetry.
-*   `--arol-dark`: `#1A252F` — Heavy text contrasting on light sheets.
-*   `--arol-bg`: `#F8FAFC` — Overall canvas background.
+### Configurazioni Chiave
+- **Path Alias**: `@` → `src/` (es. `import Button from '@/components/ui/Button'`)
+- **Dev Server**: porta `3000`, `host: true` — esposto in LAN per test su dispositivi fisici
+- **PWA Display**: `standalone`, orientamento `portrait`, tema `#002D54` (blu AROL)
 
 ---
 
-## 🚀 Implemented Architectural Features (Fase 1 - 3)
+## 🎨 Design System (Rugged UI)
 
-The frontend contains a full-fledged production-ready vertical slice matching the requirements of the **AROL Conversational Ecosystem**:
+Progettato per ambienti industriali con illuminazione variabile e uso con guanti. Tutti i touch target sono **≥ 48px** (WCAG 2.1).
 
-### 1. Dynamic Asset Management (`MachineContext.jsx`)
-*   **Backend Integration**: Dynamically queries the list of AROL fleet machines (`GET /v1/machines`) and resolved assets (`GET /v1/machines/{id}`).
-*   **Multi-Tier Offline Caching**: Persists fleet records and selected machine metadata in `sessionStorage` (`arol_cached_fleet`, `arol_active_machine`). If the technician enters a Wi-Fi blind spot in the facility, the interface triggers a **graceful fallback**, rendering the cached profiles and showing an offline banner rather than locking the UI.
+### Token (`src/styles/tokens.css`)
 
-### 2. Custom SSE Stream Parser (`useChatStream.js`)
-*   **POST-Based EventStream reader**: Since native browser `EventSource` restricts requests to `GET`, this hook consumes a custom chunk-by-chunk stream reader using standard `fetch` API and JavaScript `ReadableStream`.
-*   **Real-Time Token Rendering**: Consumes the `POST /v1/chat/stream` endpoint, parsing SSE events (`token`, `citations`, `session`, `error`) on the fly. Words are appended to the chat bubble in real-time.
-*   **Conversational Memory Persistence**: Automatically captures the LangGraph thread's `session_id` and saves it locally. Subsequent queries reuse the active session identifier so the agents retain multi-turn context (e.g., remembering previous errors and parts discussed).
-*   **Network Resiliency**: Includes an `AbortController` reference. Navigating away, switching tabs, or selecting a new machine cancels the active request on the spot, preventing thread leaks and processing load on the server.
+| Token CSS | Valore | Utilizzo |
+| :--- | :--- | :--- |
+| `--arol-blue` | `#002D54` | Messaggi utente, header, bottoni primari |
+| `--arol-sky` | `#407B9E` | Citazioni, link, stati attivi secondari |
+| `--arol-sky-light` | `rgba(64,123,158,0.12)` | Background citation cards |
+| `--arol-dark` | `#1A252F` | Testo ad alta leggibilità |
+| `--arol-gray-light` | `#F0F2F5` | Messaggi AI, background pagina |
+| `--arol-red` | `#C0392B` | Allarmi, errori di rete |
+| `--arol-red-light` | `rgba(192,57,43,0.08)` | Background errori |
+| `--arol-green` | `#27AE60` | Stato operativo, successo |
+| `--font-primary` | `'Inter'` | Tipografia principale |
 
-### 3. Smart Document CAD Blueprint Viewer (`ManualViewer-v2.jsx`)
-*   **Dynamic Document Syncing**: Queries `GET /v1/machines/{id}/manuals` to list the actual technical documents available on the server.
-*   **AI Citation Routing**: Integrates with the Chat Feed. Clicking on a citation card (e.g., `[Manuale_Euro_VP_Manutenzione.pdf, Page 24]`) triggers dynamic page-shifting. The viewer updates document selectors, flips to the target page, and anchors the viewport.
-*   **Vector DB Segment Injection**: Receives the original document chunk retrieved from Chroma DB (`selectedCitation.snippet`) and injects it into a high-visibility, high-contrast banner overlaying the CAD drawing.
-*   **Offline Fallback Database**: Embeds an offline fallback copy (`FALLBACK_MANUALS_DATABASE`) with pre-programmed SVG/CSS blueprints for Euro VP capping heads, baseplates, cam assemblies, and anchor bolts to enable offline exam simulations.
-*   **Advanced View Control**: Tactile zoom controls (70% to 150%), viewport-scroll synchronization, fullscreen mode (Natively using Fullscreen API), and an internal keyword index search.
-
-### 4. Interactive Conversational Interface (`App-v3.jsx`)
-*   **State-Filtered Fleet View**: Searchable list supporting status filtering (All, Operational, In Alarm).
-*   **GPU In-Progress Waiting State**: Disables chat inputs and shows animated loading indicators while the backend GPU-orchestrator processes heavy agent pipelines.
+**Spacing**: griglia a 4px (`--space-1` → `--space-4`). **Border radius**: `sm/md/lg/xl`.
 
 ---
 
-## 📂 Project Structure (`/frontend`)
+## 📐 Architettura Frontend
 
-```text
+### Routing (`App.jsx`)
+
+```
+/                → FleetView        (lista flotta macchine)
+/fleet           → FleetView        (alias)
+/machine/:id     → LandingResolver  → LandingQR (scansione QR + scheda macchina)
+/workspace/:id   → WorkspaceWrapper → ChatWorkspace (chat SSE + ManualViewer)
+/scanner         → MachineScanner   (scansione manuale via fotocamera)
+```
+
+### State Management
+
+```
+MachineProvider (React Context globale — MachineContext.jsx)
+    ├── fleet[]           → GET /v1/machines
+    ├── activeMachine     → GET /v1/machines/{id}
+    ├── activeManuals[]   → GET /v1/machines/{id}/manuals
+    ├── loading / error
+    └── sessionStorage cache  →  arol_cached_fleet, arol_active_machine, arol_active_manuals
+
+WorkspaceWrapper (locale)
+    ├── messages[]        → stato locale chat bubbles (modello: ChatMessage.js)
+    ├── isAiLoading       → disabilita input durante streaming
+    ├── useChatStream()   → hook SSE streaming
+    └── sessionStorage    → arol_session_id_{machineId}  (continuità conversazionale)
+```
+
+### Flusso Conversazionale SSE
+
+```
+Operatore digita query → WorkspaceWrapper.handleSendMessage()
+    │
+    │  POST /v1/chat/stream  { query, machine_id, session_id? }
+    ▼
+useChatStream.streamMessage()
+    ├── fetch() + ReadableStream (non EventSource: richiede POST)
+    ├── AbortController per cancellazione
+    └── Parser SSE frame-by-frame:
+        │
+        ├── "start"     → acquisisce session_id
+        ├── "thinking"  → (parsato, non ancora mostrato in UI — to-do #3)
+        ├── "token"     → onToken() → aggiorna bolla AI carattere per carattere
+        ├── "status"    → (parsato, non ancora mostrato in UI — to-do #3)
+        ├── "citations" → onComplete() con citations[]
+        ├── "error"     → onError()
+        └── "done"      → salva session_id in sessionStorage
+```
+
+---
+
+## 📂 Struttura del Progetto
+
+```
 frontend/
-├── dist/                          # Optimized static files generated during production builds
 ├── public/
-│   ├── manifest.json              # Progressive Web App standalone configuration
-│   └── favicon.ico
+│   └── icons/                         # Icone PWA (192x192, 512x512)
 ├── src/
 │   ├── components/
 │   │   ├── chat/
-│   │   │   ├── ChatWindow.jsx     # Controls chat feed and prompt suggestions
-│   │   │   └── ChatBubble.jsx     # Individual balloon rendering markdown, alerts, and citations
-│   │   └── manuals/
-│   │       └── ManualViewer.jsx   # Vector CAD reader, zoom engine, and RAG chunk injector
+│   │   │   ├── ChatBubble.jsx         # Bolla chat: testo, citazioni, errori, retry
+│   │   │   ├── ChatInput.jsx          # Input bar con gestione invio e stato loading
+│   │   │   ├── ChatWindow.jsx         # Feed chat: lista bolle + suggestion chips
+│   │   │   ├── ChatWindowHeader.jsx   # Header workspace con info macchina attiva
+│   │   │   └── SuggestionChips.jsx    # Chip con domande suggerite contestuali
+│   │   ├── manuals/
+│   │   │   ├── ManualViewer.jsx       # Viewer PDF con zoom, navigazione pagine, citation routing
+│   │   │   ├── AIReferenceBanner.jsx  # Banner snippet RAG sovrapposto al documento
+│   │   │   ├── DocumentArea.jsx       # Area rendering documento PDF
+│   │   │   ├── SearchDrawer.jsx       # Drawer ricerca parole chiave nel manuale
+│   │   │   └── TopToolbar.jsx         # Toolbar viewer: selezione documento, zoom, fullscreen
+│   │   └── ui/
+│   │       ├── Button.jsx             # Componente bottone riusabile
+│   │       └── Header.jsx             # Header generico condiviso
 │   ├── context/
-│   │   └── MachineContext.jsx     # Context provider for Fleet Sync and Offline Caching
+│   │   └── MachineContext.jsx         # Provider flotta: fetch, scan, cache, offline fallback
 │   ├── hooks/
-│   │   └── useChatStream.js       # Core SSE fetch stream parser and session memory engine
+│   │   ├── useChatStream.js           # Hook SSE streaming (fetch + ReadableStream)
+│   │   └── useChatApi.js              # Hook non-streaming (deprecato, non usato)
+│   ├── models/
+│   │   └── ChatMessage.js             # Schema ChatMessage con DEFAULT_CHAT_MESSAGE
 │   ├── pages/
-│   │   ├── LandingQR.jsx          # Redirecting target post-QR scan with ID resolution
-│   │   └── ChatWorkspace.jsx      # Mobile Tab / Tablet Split-Screen Layout orchestrator
-│   ├── App.jsx                    # Routing table and global stream coordinator (v3)
-│   ├── App.css                    # UI color tokens and overall industrial reset rules
-│   └── main.jsx
-├── Dockerfile                     # Multi-stage optimized Docker deployment model
-├── nginx.conf                     # Nginx client-side redirection configuration (Anti-404 SPA)
-├── package.json                   # Client-side node library manifests
-└── vite.config.js                 # Dev-server routing, LAN exposing, and path alias rules
+│   │   ├── FleetView.jsx              # Dashboard flotta: griglia macchine, filtri, ricerca
+│   │   ├── LandingQR.jsx              # Landing post-scansione: scheda macchina + navigazione
+│   │   ├── LandingResolver.jsx        # Resolver route /machine/:id → LandingQR
+│   │   ├── MachineScanner.jsx         # Scanner QR via fotocamera (html5-qrcode)
+│   │   ├── ChatWorkspace.jsx          # Layout workspace: tab mobile / split-screen tablet
+│   │   └── WorkspaceWrapper.jsx       # Orchestratore chat: state messaggi + useChatStream
+│   ├── stories/                       # Storybook stories per i componenti
+│   ├── styles/
+│   │   ├── tokens.css                 # ⭐ Design tokens: colori, spacing, radius, font
+│   │   ├── base.css                   # Reset CSS globale
+│   │   ├── index.css                  # Entry point CSS
+│   │   ├── App.css                    # Stili viewport globali
+│   │   ├── ChatBubble.css
+│   │   ├── ChatInput.css
+│   │   ├── ChatWindow.css
+│   │   ├── ChatWorkspace.css
+│   │   ├── FleetView.css
+│   │   ├── LandingQR.css
+│   │   ├── ManualViewer.css
+│   │   └── ...                        # Un file CSS per ogni componente
+│   ├── App.jsx                        # Router React + MachineProvider
+│   └── main.jsx                       # Entry point React
+├── .env                               # VITE_API_URL (non versionato)
+├── .env.example                       # Template variabili d'ambiente
+├── Dockerfile                         # Multi-stage: build Vite → serve Nginx Alpine
+├── nginx.conf                         # SPA fallback + CORS headers
+├── vite.config.js                     # Plugin PWA, alias @, server LAN, Vitest+Playwright
+└── package.json
 ```
 
 ---
 
-## 🚀 Getting Started & Running Instructions
+## 🚀 Come Avviare
 
-Ensure you have **Node.js (v20+ recommended)** installed on your machine.
+### Prerequisiti
+- **Node.js v20+**
+- Backend in esecuzione su `http://localhost:8000` (o configurare `VITE_API_URL`)
 
-### Method A: Local Development Run (Senza Docker)
+### Sviluppo Locale
 
-#### 1. Install Dependencies
-Navigate into the `/frontend` workspace and install the package manifests:
 ```bash
+# 1. Installa le dipendenze
+cd frontend
 npm install
-```
 
-#### 2. Configure Environment Variables
-Create a local `.env` file in the root of the `/frontend` directory to point to your backend orchestrator endpoint:
-```bash
-# Create local configuration
-echo "VITE_API_URL=http://localhost:8000" > .env
-```
-*(Use the `.env.example` file as a reference for multi-stage deployments).*
+# 2. Configura le variabili d'ambiente
+cp .env.example .env
+# Modifica VITE_API_URL se necessario (default: http://localhost:8000)
 
-#### 3. Start the Development Server
-Launch the development environment exposed to your local area network (LAN) for testing on physical devices:
-```bash
+# 3. Avvia il dev server
 npm run dev
+# → http://localhost:3000
+# → http://<IP-LAN>:3000  (per test su dispositivi fisici in rete)
 ```
-*   **Local URL**: `http://localhost:3000`
-*   **Network URL (LAN)**: `http://192.168.x.x:3000` *(Scan the console-generated QR code with your mobile device to test live interactions directly on the factory floor).*
 
----
+### Storybook (Component Explorer)
 
-### Method B: Production Build & Run (Con Docker)
-
-To compile the application in optimized standalone production mode and serve it with a high-performance Nginx server:
-
-#### 1. Build the Docker Image
-Execute the build context pointing to our multi-stage docker configurations:
 ```bash
-docker build -t arol-frontend .
+npm run storybook
+# → http://localhost:6006
 ```
 
-#### 2. Run the Container
-Launch the container mapping Nginx's exposed port `3000` to your host computer:
+### Test
+
 ```bash
-docker run -d -p 3000:3000 --name arol-frontend-client arol-frontend
+npm run test        # Vitest + Playwright (headless Chromium)
 ```
 
-#### 3. Multi-Service Run (Docker Compose)
-If launching within the global monorepo using Docker Compose, append the following node to your root `docker-compose.yml` file:
-```yaml
-version: '3.8'
+### Build di Produzione
 
-services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - VITE_API_URL=http://localhost:8000
-    depends_on:
-      - backend
-```
-Boot all ecosystem containers dynamically using:
 ```bash
-docker-compose up --build -d
+npm run build       # Output in dist/
+npm run preview     # Anteprima locale del build
+```
+
+### Con Docker Compose (stack completo)
+
+Il frontend viene avviato automaticamente con l'intero stack. Il container espone la porta `3000` (Nginx), mappata su `8080` dell'host:
+
+```bash
+# Dalla root del repository:
+docker compose up --build
+# → http://localhost:8080
 ```
 
 ---
 
-## 🛡️ Nginx Routing Explanation (Production Build Safety)
+## 🛡️ Nginx in Produzione
 
-In production, since React utilizes client-side routing (`react-router-dom`), reload attempts or deep URL requests (e.g., bookmarking `/workspace/001` or entering it manually in the browser bar) would trigger standard Nginx directory lookups, culminating in a **`404 Not Found`** crash.
+Il Dockerfile usa un build multi-stage: Vite compila il bundle in `/dist`, poi Nginx Alpine serve i file statici. La configurazione include il fallback SPA obbligatorio per React Router:
 
-To protect operators against accidental session reloads, the production container embeds an optimized `nginx.conf` utilizing:
 ```nginx
 location / {
     root /usr/share/nginx/html;
-    index index.html index.htm;
+    index index.html;
     try_files $uri $uri/ /index.html;
 }
 ```
-This forces Nginx to intercept any deep requests, resolve them, and delegate the UI rendering back to our `index.html` file, where the React routing tree can cleanly resume the session.
+
+Questo garantisce che deep-link (es. `/workspace/2`) e reload manuali non producano `404`.
+
+---
+
+## ⚠️ Note Importanti
+
+### `useChatApi.js` — Deprecato
+Il file `src/hooks/useChatApi.js` è la vecchia implementazione non-streaming. **Non è usato** nel workspace principale (sostituito da `useChatStream.js`). Contiene anche un'incongruenza: invia `{ message: ... }` mentre il backend si aspetta `{ query: ... }`. Mantenuto solo come riferimento, da ignorare.
+
+### `machine_id` senza autenticazione
+Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque conosca un ID può accedere ai dati di quella macchina — non c'è verifica di autenticazione.
 
 ---
 
 ## 📋 To-Do
 
-Issues identified during streaming chat code review ([`useChatStream.js`](src/hooks/useChatStream.js) + [`App.jsx`](src/App.jsx)):
-
-- [ ] **#1 — Cursore animato durante lo streaming** `🟡 UX`
-  La bolla AI è vuota/invisibile prima che arrivi il primo token dal backend. Aggiungere un cursore lampeggiante (`▍`) in `ChatBubble.jsx` quando `status === 'sending'` e `text === ''`, per dare feedback visivo immediato all'operatore.
+- [x] **#1 — Cursore animato durante lo streaming** `🟡 UX`
+  La bolla AI è vuota/invisibile prima che arrivi il primo token. Aggiungere un cursore lampeggiante (`▍`) in `ChatBubble.jsx` quando `status === 'sending'` e `text === ''`.
   ```jsx
-  // ChatBubble.jsx
-  const displayText = status === 'sending' ? text + '▍' : text;
+  const displayText = status === 'sending' && !text ? '▍' : text;
   ```
 
-- [ ] **#2 — Allineamento `id` tra placeholder e `finalMessage`** `🟠 Fragile`
-  Il placeholder AI creato in `App.jsx` ha id `ai-stream-*`, ma il `finalMessage` costruito alla fine dello stream in `useChatStream.js` genera un nuovo id `ai-*`. La sostituzione funziona perché il `prev.map()` cerca il vecchio id, ma la logica è fragile. Riusare l'`aiMessageId` originale anche nel `finalMessage` per rendere il codice più robusto e leggibile.
+- [x] **#2 — Allineamento `id` placeholder / `finalMessage`** `🟠 Fragile`
+  Il placeholder AI creato in `WorkspaceWrapper` ha id `ai-stream-*`, ma il `finalMessage` costruito da `useChatStream.js` genera un nuovo id `ai-*`. La sostituzione via `prev.map()` funziona ma è fragile. Riusare l'`aiMessageId` originale anche nel `finalMessage`.
 
-- [ ] **#3 — Esporre gli eventi `thinking` e `status` all'UI** `🔵 Miglioramento`
-  Gli eventi SSE `thinking` (ragionamento interno del modello) e `status` (es. `"Consulting manuals..."`) vengono ricevuti e parsati correttamente in `useChatStream.js` ma ignorati. Aggiungere callback opzionali `onThinking` e `onStatus` per consentire la visualizzazione di un pannello "Sto pensando..." e di un indicatore del tool in esecuzione, evitando che l'utente percepisca l'app come bloccata durante chiamate lunghe agli agenti.
+- [x] **#3 — Test decodifica QR in `MachineScanner`** `🟠 Testing`
+  Verificare end-to-end che `MachineScanner.jsx` (che usa `html5-qrcode`) decodifichi correttamente il QR code di una macchina e navighi verso `/machine/:id`. Aggiungere test Playwright che simuli la scansione (o mocki il risultato del decoder) per coprire il flusso completo QR → landing.
+
+- [x] **#4 — Highlight citazioni AI direttamente sul testo PDF** `🔵 Miglioramento`
+  Quando l'AI restituisce una citazione (`{ doc, page, snippet }`), evidenziare il testo corrispondente direttamente nella pagina PDF nel `ManualViewer`. Attualmente viene mostrato solo il banner `AIReferenceBanner` con lo snippet. Usare le API di `react-pdf` per cercare e selezionare visivamente il testo nella pagina indicata.
+
+- [ ] **#5 — Suggestion Chips contestuali e utili** `🟡 UX`
+  Le `SuggestionChips` mostrano domande suggerite statiche. Renderle contestuali alla macchina attiva (`activeMachine.model`, stato operativo) e al momento della conversazione (es. proporre domande di follow-up basate sull'ultimo messaggio AI). Le chip devono variare in base al modello macchina e allo stato (`online` / `maintenance`).
+
+- [ ] **#6 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
+  Collegato al to-do #3: quando il backend invia eventi `thinking` (ragionamento interno del modello), mostrare un elemento collassabile nella bolla AI — es. un accordeon `💭 Mostra ragionamento` — che l'operatore può espandere per vedere il processo decisionale dell'AI. Utile per debug e per la fiducia nel sistema.
+
+- [ ] **#7 — Drawer ricerca testo nel PDF** `🟡 UX`
+  Il componente `SearchDrawer.jsx` esiste già ma va collegato alla logica di ricerca testuale nel `ManualViewer`. Implementare la ricerca full-text nelle pagine del documento aperto usando le API di `react-pdf`, con highlight dei risultati e navigazione tra occorrenze (prev/next).
+
+- [ ] **#8 — Aggiornare sezione frontend del README generale del workspace**
+
+- [ ] **#9 — Autenticazione `machine_id`** `🔴 Sicurezza`
+  Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque conosca un ID può accedere ai dati di quella macchina — non c'è verifica di autenticazione. Aggiungere un meccanismo di verifica (es. token JWT, sessione operatore) prima di caricare i dati di una macchina in `LandingQR` e `WorkspaceWrapper`.
