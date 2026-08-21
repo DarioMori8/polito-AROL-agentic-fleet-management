@@ -63,6 +63,7 @@ services:
       - "8000:8000"
     environment:
       MANUALS_AGENT_URL: http://agents:8001
+      MANUALS_DIR: /data/manuals
       ORCHESTRATOR_LLM_PROVIDER: ollama
       ORCHESTRATOR_OLLAMA_BASE_URL: http://host.docker.internal:11434
       ORCHESTRATOR_OLLAMA_MODEL: ${ORCHESTRATOR_OLLAMA_MODEL:-gpt-oss:20b}
