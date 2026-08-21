@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from contracts import Citation
+from enum import Enum
 
 
 class ChatRequest(BaseModel):
@@ -9,5 +9,21 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    citations: list[Citation] = []
+    sources: list[dict] = []
     session_id: str  
+
+
+
+class MessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+class HistoryMessage(BaseModel):
+    role: MessageRole                       # "user" | "assistant"
+    content: str
+    sources: list[dict] = []  # always present; empty for user messages and citation-less answers
+
+
+class ConversationHistory(BaseModel):
+    session_id: str
+    messages: list[HistoryMessage]

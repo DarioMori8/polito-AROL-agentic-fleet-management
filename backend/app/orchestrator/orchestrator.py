@@ -2,51 +2,73 @@
 from typing import Annotated, TypedDict, AsyncIterator
 import uuid
  
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage, AIMessage
 from langfuse.langchain import CallbackHandler
 from langchain_ollama import ChatOllama
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.checkpoint.memory import MemorySaver
+from contextlib import asynccontextmanager
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+from contracts import Citation
+from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, HistoryMessage, MessageRole
 
 from app.config import settings
-from app.models.chat import ChatRequest, ChatResponse
 from app.orchestrator.agent_registry import AGENT_TOOLS
 from app.orchestrator.base import Orchestrator
+
+from app.resources.repository import DbMachineRepository
+
 SYSTEM_PROMPT = """You are the routing brain of the AROL Customer Platform assistant.
 
 You do not answer technical questions on your own initiative. For every
-user message you choose exactly one of three actions:
+user message you choose exactly one of four actions:
 
 1. ROUTE — the message contains a concrete, searchable technical intent
    (a symptom, an error code, a named component, a specific procedure).
    Call the relevant tool(s), then compose their results into a clear,
    well-organized response.
 
-2. CLARIFY — the message expresses a need but is too underspecified for
-   any tool to help (e.g. "I have to fix this machine, can you help me?").
-   Do NOT call a tool and do NOT apologize. Ask the user 1-3 targeted
-   questions to gather what a tool would need: observed symptoms, error
-   codes shown on the display, what the machine was doing when the issue
-   appeared. Keep the tone helpful and welcoming.
+2. CLARIFY — the message expresses a technical need but is too
+   underspecified for any tool to help (e.g. "I have to fix this machine,
+   can you help me?"). Do NOT call a tool and do NOT apologize. Ask the
+   user 1-3 targeted questions to gather what a tool would need: observed
+   symptoms, error codes shown on the display, what the machine was doing
+   when the issue appeared. Keep the tone helpful and welcoming.
 
-3. DECLINE — no available tool is relevant to the question even in
-   principle. Say so clearly instead of guessing.
+3. CHITCHAT — the message is a greeting, an introduction, thanks, or
+   other conversational courtesy with no technical intent (e.g. "hi",
+   "my name is Dario", "thanks!"). Do NOT call a tool and do NOT decline.
+   Reply briefly and warmly, and steer the user toward what you can help
+   with: which machine they are working on and what problem they are
+   facing. Keep it to one or two sentences — you are opening a door to a
+   technical conversation, not making small talk for its own sake.
 
-Asking a clarifying question is a routing action, not a technical answer:
-it is always allowed and never counts as "answering on your own
-initiative." When in doubt between ROUTE and CLARIFY, prefer CLARIFY —
-routing a vague request wastes a tool call and produces a non-answer.
+4. DECLINE — the message has a real intent but no available tool is
+   relevant to it even in principle (e.g. a request unrelated to AROL
+   machines and their documentation). Say so politely, in one sentence,
+   and redirect: state that you can help with the manuals and maintenance
+   of their machines. Do not answer the off-topic request itself.
+
+Asking a clarifying question (CLARIFY) or greeting the user (CHITCHAT) is
+a routing action, not a technical answer: it is always allowed and never
+counts as "answering on your own initiative." When in doubt between ROUTE
+and CLARIFY, prefer CLARIFY — routing a vague request wastes a tool call
+and produces a non-answer.
 
 Binding rules:
 - Base any technical content in the final response only on what the tools
   returned. Never make up technical facts, error codes, procedures, or
   safety information that a tool did not provide.
-- If a tool fails or returns nothing useful, tell the user honestly
-  instead of inventing a plausible answer. This is different from CLARIFY:
-  here you already called a tool and it came back empty; there the request
-  was too vague to call one at all.
+- If a tool fails or returns nothing useful, tell the user honestly that
+  the information was not found, and ask for more detail (e.g. the exact
+  symptom or error code) so you can search again. Do NOT fill the gap with
+  what a manual "usually" or "typically" contains, and do NOT list example
+  maintenance tasks, components, or procedures from your own knowledge:
+  if the tool did not return it, it does not go in the response. This is
+  different from CLARIFY: here you already called a tool and it came back
+  empty; there the request was too vague to call one at all.
 - If a tool's result includes a low confidence value, consider whether
   another source is needed before answering confidently.
 - The user message starts with a "[machine_id: ...]" tag: this is
@@ -135,15 +157,69 @@ _graph_builder.add_conditional_edges("agent", tools_condition)
 # This is the core loop of the ReAct pattern (Reason -> Act -> Reason -> ...).
 _graph_builder.add_edge("tools", "agent")
 
-_checkpointer = MemorySaver()
+@asynccontextmanager
+async def build_graph():
+    """
+    Async context manager that owns the graph's construction: it opens a
+    durable SQLite checkpointer, compiles the graph with it, and yields
+    the compiled graph for the lifetime of the `async with` block that
+    uses it. When that block exits (app shutdown), the SQLite connection
+    is closed cleanly by the inner `async with` below.
+    """
+    async with AsyncSqliteSaver.from_conn_string(settings.CHECKPOINT_DB_PATH) as checkpointer:
+        await checkpointer.setup()
+        graph = _graph_builder.compile(checkpointer=checkpointer)
+        yield graph
 
-# .compile() turns the graph definition into an executable object
-# that can be invoked (e.g. graph.ainvoke(...) / graph.astream(...)).
-graph = _graph_builder.compile(checkpointer=_checkpointer)
+def normalize_artifact(artifact: dict) -> list[dict]:
+    """Single source of truth for turning one tool artifact into a
+    flat list of sources, each carrying a `kind` the frontend switches on.
+    Manuals citations become kind="manual"; docs sources keep their own kind.
+    An error artifact (no citations, no sources) yields an empty list."""
+    sources: list[dict] = []
+    for citation in artifact.get("citations", []):
+        sources.append({"kind": "manual", **citation})
+    sources.extend(artifact.get("sources", []))
+    sources.extend(artifact.get("observations", []))
+    return sources
+
 
 class LangGraphOrchestrator(Orchestrator):
 
+    def __init__(self, graph, session_factory):
+        # The graph is injected, not fetched: the orchestrator operates on
+        # the graph it's given and knows nothing about where it came from
+        # (app.state, lifespan, FastAPI). This keeps it free of any web-app
+        # dependency and avoids a circular import with main.py.
+        self._graph = graph
+        # Same reasoning for the domain DB: the orchestrator receives a
+        # *factory*, not a live session. It opens one only to resolve the
+        # tenant (machine_id -> company_id) and closes it immediately, so
+        # no session ever outlives the streaming generator.
+        self._session_factory = session_factory
+
+
+
+    async def _resolve_company_id(self, machine_id: str) -> str | None:
+        """
+        Resolves the tenant boundary from the machine: which customer company
+        owns this machine. Read from our own domain DB, never from the LLM or
+        the client — it is a security boundary, so it must come from the
+        authoritative source.
+
+        The session is opened and closed here, before the graph runs: a
+        request-scoped session would outlive its context inside the streaming
+        generator, which keeps yielding after the HTTP handler has returned.
+
+        Returns None if the machine is unknown; callers pass that through so
+        that agents which don't need a tenant (manuals, iot) keep working.
+        """
+        async with self._session_factory() as session:
+            machine = await DbMachineRepository(session).get_machine(machine_id)
+        return machine.company_id if machine else None
+
     async def handle(self, request: ChatRequest)-> ChatResponse:
+        company_id = await self._resolve_company_id(request.machine_id)
 
         session_id = request.session_id or str(uuid.uuid4())
 
@@ -155,21 +231,21 @@ class LangGraphOrchestrator(Orchestrator):
         }
 
         #recursion_limit count each node execution, I decided to multiply for two because Orchestrator_max_iterations refers to agent+tools
-        result = await graph.ainvoke(
+        result = await self._graph.ainvoke(
             initial_state,
             config={
                 "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1,
                 "callbacks": [_langfuse_handler],
-                "configurable": {"thread_id": session_id}
+                "configurable": {"thread_id": session_id, "company_id": company_id},
             },
         )
 
         final_message= result["messages"][-1]
-        citations= self._extract_citations(result["messages"])
+        sources= self._extract_sources(result["messages"])
 
         return ChatResponse(
             answer=final_message.content or "",
-            citations=citations,
+            sources=sources,
             session_id=session_id,  
         )
 
@@ -181,6 +257,8 @@ class LangGraphOrchestrator(Orchestrator):
             / done. The endpoint layer is responsible for serializing these into
             the SSE wire format — this method stays transport-agnostic.
         """
+        company_id = await self._resolve_company_id(request.machine_id)
+
         session_id = request.session_id or str(uuid.uuid4())  
 
         user_content= f"[machine_id: {request.machine_id}]\n{request.query}"
@@ -193,15 +271,15 @@ class LangGraphOrchestrator(Orchestrator):
         # This is also the future thread_id once checkpointing is wired.
         yield {"type": "start", "session_id": session_id}
 
-        citations: list[dict]= []
+        sources: list[dict] = []
 
         try:
-            async for stream_mode, payload in graph.astream(
+            async for stream_mode, payload in self._graph.astream(
                 initial_state, 
                 config={
                     "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS*2+1,
                     "callbacks": [_langfuse_handler],
-                    "configurable": {"thread_id": session_id},
+                    "configurable": {"thread_id": session_id, "company_id": company_id},
                 },
                 stream_mode=["messages", "updates"],
             ):
@@ -240,10 +318,9 @@ class LangGraphOrchestrator(Orchestrator):
                                     "recoverable": True,
                                     "message": msg.artifact["error"],
                                 }
-                            for c in msg.artifact.get("citations", []):
-                                citations.append(c)
+                            sources.extend(normalize_artifact(msg.artifact))
 
-            yield {"type": "citations", "citations": citations}
+            yield {"type": "sources", "sources": sources}
             yield {"type": "done", "session_id": session_id}
 
         except Exception as exc:
@@ -252,23 +329,78 @@ class LangGraphOrchestrator(Orchestrator):
             yield {"type": "error", "recoverable": False, "message": str(exc)}
             yield {"type": "done", "session_id": session_id}
 
-    
 
 
+    def _project_messages(self, messages: list[BaseMessage]) -> list[HistoryMessage]:
+        projected: list[HistoryMessage] = []
+        pending_sources: list[dict] = []   # the "drawer": citations seen in this turn,
+                                                    # waiting to be attached to the answer that closes it
 
-
-    def _extract_citations(self, messages: list[BaseMessage]) -> list[dict]:
-        """
-        Walks through the final message history looking for ToolMessage
-        instances (the results produced by tools executed during the graph
-        run) and extracts their citations, if any.
-        """
-        citations: list[dict] = []
         for msg in messages:
-            if isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict):
-                tool_citations = msg.artifact.get("citations")
-                if tool_citations:
-                    citations.extend(tool_citations)
-        return citations        
+            if isinstance(msg, HumanMessage):
+                content = msg.content
+          
+                if content.startswith("[machine_id:") and "\n" in content:
+                    content = content.split("\n", 1)[1]
+                projected.append(HistoryMessage(
+                    role=MessageRole.USER,
+                    content=content,
+                    citations=[],
+                ))
+
+            elif isinstance(msg, ToolMessage):
+                # Sources live in the tool artifact, not in the answer.
+                # Stash them; they belong to the assistant message that comes next.
+                if isinstance(msg.artifact, dict):
+                    if isinstance(msg.artifact, dict):
+                        pending_sources.extend(normalize_artifact(msg.artifact))
+
+
+            elif isinstance(msg, AIMessage):
+                # An AIMessage with no text content is the "decide to call a tool" step:
+                # pure mechanics, not part of the human-visible conversation. Skip it.
+                if not msg.content:
+                    continue
+                # An AIMessage with text is the turn's final answer: attach the drawer,
+                # then empty it for the next turn.
+                projected.append(HistoryMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=msg.content,
+                    sources=pending_sources,
+                ))
+                pending_sources = []
+
+        return projected
+
     
+    async def get_history(self, session_id: str) -> ConversationHistory | None:
+        config = {"configurable": {"thread_id": session_id}}
+        snapshot = await self._graph.aget_state(config)
+
+        # aget_state on an unknown thread returns an empty snapshot (no messages),
+        # not an error. That's how we detect "conversation does not exist".
+        messages = snapshot.values.get("messages", [])
+        if not messages:
+            return None
+
+        projected = self._project_messages(messages)
+        return ConversationHistory(session_id=session_id, messages=projected)
+
+
+    def _extract_sources(self, messages: list[BaseMessage]) -> list[dict]:
+        """
+        Walks the message history collecting the structured sources produced
+        by every tool during the graph run, normalized into a single list
+        where each element carries a `kind` the frontend can switch on.
+
+        Manuals citations (doc/page/snippet) are tagged kind="manual";
+        docs sources already carry their own kind (document/order/quote).
+        """
+        sources: list[dict] = []
+        for msg in messages:
+            if not (isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict)):
+                continue
+            sources.extend(normalize_artifact(msg.artifact))
+            
+        return sources
 
