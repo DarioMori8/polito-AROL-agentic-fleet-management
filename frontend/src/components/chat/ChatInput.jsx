@@ -118,7 +118,7 @@ export default function ChatInput({
     return (
         <form className="chat-input-form" onSubmit={handleSend}>
             {/* Dynamic Attachment Preview Bar */}
-            {attachment && (
+            {/* {attachment && (
                 <div className="attachment-preview">
                     <Paperclip size={14} className="preview-icon" />
                     <span className="preview-name">{attachment.name}</span>
@@ -132,7 +132,7 @@ export default function ChatInput({
                         <X size={14} />
                     </Button>
                 </div>
-            )}
+            )} */}
 
             <div className="chat-input-container">
                 {/* Speech-to-Text Button (Min 48x48px Touch Target) */}
@@ -149,16 +149,16 @@ export default function ChatInput({
                 </Button>
 
                 {/* Hidden native input for mobile file-picker or camera capture */}
-                <input
+                {/* <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileChange}
                     style={{ display: 'none' }}
                     accept="image/*,application/pdf"
-                />
+                /> */}
 
                 {/* Attachment Button (Min 48x48px Touch Target) */}
-                <Button
+                {/* <Button
                     variant="outline"
                     className="input-action-btn attachment-btn"
                     onClick={triggerFileInput}
@@ -168,7 +168,7 @@ export default function ChatInput({
                     aria-label="Attach Image or Document"
                 >
                     <Paperclip size={20} />
-                </Button>
+                </Button> */}
 
                 {/* Dynamic growing Textarea */}
                 <textarea

@@ -248,35 +248,29 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 
 ## 📋 To-Do
 
-- [ ] **#1 — Cursore animato durante lo streaming** `🟡 UX`
+- [x] **#1 — Cursore animato durante lo streaming** `🟡 UX`
   La bolla AI è vuota/invisibile prima che arrivi il primo token. Aggiungere un cursore lampeggiante (`▍`) in `ChatBubble.jsx` quando `status === 'sending'` e `text === ''`.
   ```jsx
   const displayText = status === 'sending' && !text ? '▍' : text;
   ```
 
-- [ ] **#2 — Allineamento `id` placeholder / `finalMessage`** `🟠 Fragile`
+- [x] **#2 — Allineamento `id` placeholder / `finalMessage`** `🟠 Fragile`
   Il placeholder AI creato in `WorkspaceWrapper` ha id `ai-stream-*`, ma il `finalMessage` costruito da `useChatStream.js` genera un nuovo id `ai-*`. La sostituzione via `prev.map()` funziona ma è fragile. Riusare l'`aiMessageId` originale anche nel `finalMessage`.
 
-- [ ] **#3 — Esporre gli eventi `thinking` e `status` all'UI** `🔵 Miglioramento`
-  Gli eventi SSE `thinking` e `status` vengono parsati correttamente in `useChatStream.js` ma ignorati. Aggiungere callback opzionali `onThinking` e `onStatus` per mostrare un pannello "Sto pensando..." e un indicatore del tool in esecuzione, evitando che l'utente percepisca l'app come bloccata durante le chiamate agli agenti.
-
-- [x] **#4 — Test decodifica QR in `MachineScanner`** `🟠 Testing`
+- [x] **#3 — Test decodifica QR in `MachineScanner`** `🟠 Testing`
   Verificare end-to-end che `MachineScanner.jsx` (che usa `html5-qrcode`) decodifichi correttamente il QR code di una macchina e navighi verso `/machine/:id`. Aggiungere test Playwright che simuli la scansione (o mocki il risultato del decoder) per coprire il flusso completo QR → landing.
 
-- [ ] **#5 — Highlight citazioni AI direttamente sul testo PDF** `🔵 Miglioramento`
+- [x] **#4 — Highlight citazioni AI direttamente sul testo PDF** `🔵 Miglioramento`
   Quando l'AI restituisce una citazione (`{ doc, page, snippet }`), evidenziare il testo corrispondente direttamente nella pagina PDF nel `ManualViewer`. Attualmente viene mostrato solo il banner `AIReferenceBanner` con lo snippet. Usare le API di `react-pdf` per cercare e selezionare visivamente il testo nella pagina indicata.
 
-- [ ] **#6 — Suggestion Chips contestuali e utili** `🟡 UX`
+- [ ] **#5 — Suggestion Chips contestuali e utili** `🟡 UX`
   Le `SuggestionChips` mostrano domande suggerite statiche. Renderle contestuali alla macchina attiva (`activeMachine.model`, stato operativo) e al momento della conversazione (es. proporre domande di follow-up basate sull'ultimo messaggio AI). Le chip devono variare in base al modello macchina e allo stato (`online` / `maintenance`).
 
-- [ ] **#7 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
+- [ ] **#6 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
   Collegato al to-do #3: quando il backend invia eventi `thinking` (ragionamento interno del modello), mostrare un elemento collassabile nella bolla AI — es. un accordeon `💭 Mostra ragionamento` — che l'operatore può espandere per vedere il processo decisionale dell'AI. Utile per debug e per la fiducia nel sistema.
 
-- [ ] **#8 — Drawer ricerca testo nel PDF** `🟡 UX`
+- [ ] **#7 — Drawer ricerca testo nel PDF** `🟡 UX`
   Il componente `SearchDrawer.jsx` esiste già ma va collegato alla logica di ricerca testuale nel `ManualViewer`. Implementare la ricerca full-text nelle pagine del documento aperto usando le API di `react-pdf`, con highlight dei risultati e navigazione tra occorrenze (prev/next).
 
-- [ ] **#9 — Caricamento foto o documento reale nel messaggio** `🔵 Miglioramento`
-  Aggiungere a `ChatInput` la possibilità di allegare un'immagine (foto di un componente o di un display in errore) o un documento breve. Il file verrebbe inviato insieme alla query testuale per consentire all'AI di rispondere in modo visivo e contestuale. Richiede estensione dell'endpoint `POST /v1/chat/stream` sul backend.
-
-- [ ] **#10 - Aggiornare sezione frontend del README generale del workspace**
+- [ ] **#8 - Aggiornare sezione frontend del README generale del workspace**
 

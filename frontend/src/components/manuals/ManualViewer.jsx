@@ -265,14 +265,20 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                 onDocumentLoadSuccess={onDocumentLoadSuccess}
                 currentPage={currentPage}
                 zoom={zoom}
+                highlightSnippet={
+                    selectedCitation?.docName === activeDocName &&
+                        selectedCitation?.page === currentPage
+                        ? selectedCitation.snippet
+                        : null
+                }
             />
 
             {/* 4. FLOATING AI GROUNDED REFERENCE BANNER */}
-            <AIReferenceBanner
+            {/* <AIReferenceBanner
                 selectedCitation={selectedCitation}
                 copied={copied}
                 copySnippetToClipboard={copySnippetToClipboard}
-            />
+            /> */}
         </div>
     );
 }

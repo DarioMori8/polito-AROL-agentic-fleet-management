@@ -39,6 +39,9 @@ export default function useChatStream() {
      * 
      * @param {string} query - The operator's question.
      * @param {string} machineId - Scanned machine identifier.
+     * @param {string} messageId - The ID already assigned to the AI placeholder bubble.
+     *   Reused in the finalMessage so the id stays consistent throughout the whole lifecycle
+     *   (placeholder → streaming → complete). If omitted, a new id is generated as fallback.
      * @param {Function} onToken - Callback triggered when a new text chunk is parsed: (tokenText) => {}
      * @param {Function} onComplete - Callback triggered when the stream ends: (finalMessageObject) => {}
      * @param {Function} onError - Callback triggered on connection/parsing failure.
@@ -46,6 +49,7 @@ export default function useChatStream() {
     const streamMessage = useCallback(async ({
         query,
         machineId = 'generic',
+        messageId,
         onToken,
         onComplete,
         onError
@@ -96,7 +100,7 @@ export default function useChatStream() {
                     ];
 
                     const finalMessage = {
-                        id: `ai-${Date.now()}`,
+                        id: messageId || `ai-${Date.now()}`,
                         sender: 'assistant',
                         text: responseText,
                         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -280,7 +284,7 @@ export default function useChatStream() {
 
             // Finalize the assembled stream message
             const finalMessage = {
-                id: `ai-${Date.now()}`,
+                id: messageId || `ai-${Date.now()}`,
                 sender: 'assistant',
                 text: accumulatedText || 'Query processed successfully.',
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

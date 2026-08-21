@@ -6,6 +6,28 @@
 /* ==========================================================================
    ROOT CONTAINER
    ========================================================================== */
+
+/* AI Citation highlight — applied via customTextRenderer in DocumentArea */
+mark.pdf-highlight {
+  background-color: rgba(240, 185, 11, 0.40);
+  /* ambra AROL, semitrasparente */
+  color: var(--arol-dark);
+  border-radius: 2px;
+  border-bottom: 2px solid rgba(240, 185, 11, 0.85);
+  padding: 0 1px;
+  animation: pdf-highlight-fade-in 0.4s ease;
+}
+
+@keyframes pdf-highlight-fade-in {
+  from {
+    background-color: rgba(240, 185, 11, 0.70);
+  }
+
+  to {
+    background-color: rgba(240, 185, 11, 0.40);
+  }
+}
+
 .manual-viewer-root {
   display: flex;
   flex-direction: column;
