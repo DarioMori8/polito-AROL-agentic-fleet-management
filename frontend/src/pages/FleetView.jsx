@@ -22,10 +22,13 @@ export default function FleetView() {
 
     // Status mappings: 'online' -> Operating, others -> In Alarm / Under Maintenance
     const filteredFleet = fleet.filter(m => {
-        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.toString().includes(searchQuery);
+        const nameToSearch = m.name || m.model_id || m.id.toString();
+        const matchesSearch = nameToSearch.toLowerCase().includes(searchQuery.toLowerCase()) || m.id.toString().toLowerCase().includes(searchQuery.toLowerCase());
+        const mStatus = m.status || 'online'; // Fallback if backend has no status
+        
         if (activeFilter === 'all') return matchesSearch;
-        if (activeFilter === 'ok') return matchesSearch && (m.status === 'online');
-        if (activeFilter === 'alarm') return matchesSearch && (m.status !== 'online');
+        if (activeFilter === 'ok') return matchesSearch && (mStatus === 'online');
+        if (activeFilter === 'alarm') return matchesSearch && (mStatus !== 'online');
         return matchesSearch;
     });
 
@@ -76,10 +79,10 @@ export default function FleetView() {
                         Tutti ({fleet.length})
                     </button>
                     <button className={`filter-chip ${activeFilter === 'ok' ? 'active' : ''}`} onClick={() => setActiveFilter('ok')}>
-                        Operativi ({fleet.filter(m => m.status === 'online').length})
+                        Operativi ({fleet.filter(m => (m.status || 'online') === 'online').length})
                     </button>
                     <button className={`filter-chip ${activeFilter === 'alarm' ? 'active' : ''}`} onClick={() => setActiveFilter('alarm')}>
-                        In Errore ({fleet.filter(m => m.status !== 'online').length})
+                        In Errore ({fleet.filter(m => (m.status || 'online') !== 'online').length})
                     </button>
                 </div>
 
@@ -93,7 +96,7 @@ export default function FleetView() {
                         {filteredFleet.map((machine) => (
                             <div
                                 key={machine.id}
-                                className={`machine-card-rugged ${machine.status !== 'online' ? 'border-alarm' : ''}`}
+                                className={`machine-card-rugged ${(machine.status || 'online') !== 'online' ? 'border-alarm' : ''}`}
                                 onClick={() => handleMachineClick(machine.id)}
                                 style={{ touchAction: 'manipulation' }}
                             >
@@ -102,15 +105,15 @@ export default function FleetView() {
                                 </div>
 
                                 <div className="card-info">
-                                    <h3 className="card-machine-name">{machine.name}</h3>
-                                    <span className="card-machine-id">ID: {machine.id} ({machine.model || 'Standard'})</span>
-                                    <span className="card-machine-dept">S/N: {machine.serial_number || 'N/D'} • {machine.location}</span>
+                                    <h3 className="card-machine-name">{machine.name || machine.model_id || 'AROL Machine'}</h3>
+                                    <span className="card-machine-id">ID: {machine.id} ({machine.model || machine.model_id || 'Standard'})</span>
+                                    <span className="card-machine-dept">S/N: {machine.serial_number || 'N/D'} • {machine.location || machine.plant_location || 'Sconosciuta'}</span>
 
                                     <div className="card-status-row">
-                                        {machine.status !== 'online' ? (
+                                        {(machine.status || 'online') !== 'online' ? (
                                             <span className="card-badge badge-error">
                                                 <ShieldAlert size={12} style={{ marginRight: '4px' }} />
-                                                Stato: {machine.status === 'maintenance' ? 'Manutenzione' : 'Offline'}
+                                                Stato: {(machine.status || 'online') === 'maintenance' ? 'Manutenzione' : 'Offline'}
                                             </span>
                                         ) : (
                                             <span className="card-badge badge-success">
