@@ -1,6 +1,7 @@
 
 from typing import Annotated, TypedDict, AsyncIterator
 import uuid
+from pathlib import Path
  
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage, AIMessage
 from langfuse.langchain import CallbackHandler
@@ -166,6 +167,7 @@ async def build_graph():
     uses it. When that block exits (app shutdown), the SQLite connection
     is closed cleanly by the inner `async with` below.
     """
+    Path(settings.CHECKPOINT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     async with AsyncSqliteSaver.from_conn_string(settings.CHECKPOINT_DB_PATH) as checkpointer:
         await checkpointer.setup()
         graph = _graph_builder.compile(checkpointer=checkpointer)

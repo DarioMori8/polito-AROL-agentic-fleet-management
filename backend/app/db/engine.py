@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
@@ -37,6 +38,7 @@ async_session_factory = async_sessionmaker(
 
 async def create_db_and_tables() -> None:
     """Create the tables if they don't exist. Called once at startup (lifespan)."""
+    Path(settings.DOMAIN_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
