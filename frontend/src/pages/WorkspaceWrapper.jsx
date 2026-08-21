@@ -33,7 +33,7 @@ export default function WorkspaceWrapper() {
                 {
                     id: 'welcome',
                     sender: 'assistant',
-                    text: `Ciao! Hai scansionato il QR di **${activeMachine.name}** (${activeMachine.modelType}).\nStato Corrente: **${activeMachine.status}**.\n\nCome posso esserti utile oggi per il troubleshooting?`,
+                    text: `Ciao! Hai scansionato il QR di **${activeMachine.name || activeMachine.serial_number || 'Macchinario'}** (${activeMachine.model_id || 'Standard'}).\nStato Corrente: **${activeMachine.status || 'Operativo'}**.\n\nCome posso esserti utile oggi per il troubleshooting?`,
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     status: 'sent',
                     citations: [],

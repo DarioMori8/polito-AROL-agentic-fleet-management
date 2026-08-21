@@ -145,7 +145,7 @@ export function MachineProvider({ children }) {
             // Parallel fetch execution to optimize latency and bandwidth
             const [machineRes, manualsRes] = await Promise.all([
                 fetch(`${API_BASE_URL}/v1/machines/${id}`),
-                fetch(`${API_BASE_URL}/v1/machines/${id}/manuals`)
+                fetch(`${API_BASE_URL}/v1/machines/${id}/manual`)
             ]);
 
             if (!machineRes.ok) {
@@ -159,7 +159,9 @@ export function MachineProvider({ children }) {
             let manualsData = [];
 
             if (manualsRes.ok) {
-                manualsData = await manualsRes.json();
+                // The backend returns a single ManualOut object, but the frontend expects an array
+                const manualObj = await manualsRes.json();
+                manualsData = manualObj ? [manualObj] : [];
             }
 
             // Update state and persistence layer

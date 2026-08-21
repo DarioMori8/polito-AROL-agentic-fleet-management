@@ -272,7 +272,13 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 - [ ] **#7 — Drawer ricerca testo nel PDF** `🟡 UX`
   Il componente `SearchDrawer.jsx` esiste già ma va collegato alla logica di ricerca testuale nel `ManualViewer`. Implementare la ricerca full-text nelle pagine del documento aperto usando le API di `react-pdf`, con highlight dei risultati e navigazione tra occorrenze (prev/next).
 
-- [ ] **#8 — Aggiornare sezione frontend del README generale del workspace**
+- [ ] **#8 - Implementazione frontend Chat History (local storage)**
+  Il backend è stato costruito per poter riprendere le conversazioni passate, salvandole su un database SQLite.
 
-- [ ] **#9 — Autenticazione `machine_id`** `🔴 Sicurezza`
+  Backend route (chat.py): GET /v1/conversations/{session_id}/messages
+  Risultato: Restituisce l'oggetto ConversationHistory che mappa l'intero storico (utente e assistente) con eventuali citazioni dei manuali allegate.
+
+- [ ] **#9 — Aggiornare sezione frontend del README generale del workspace**
+
+- [ ] **#10 — Autenticazione `machine_id`** `🔴 Sicurezza`
   Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque conosca un ID può accedere ai dati di quella macchina — non c'è verifica di autenticazione. Aggiungere un meccanismo di verifica (es. token JWT, sessione operatore) prima di caricare i dati di una macchina in `LandingQR` e `WorkspaceWrapper`.
