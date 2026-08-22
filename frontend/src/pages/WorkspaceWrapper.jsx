@@ -72,7 +72,8 @@ export default function WorkspaceWrapper() {
             text: '',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             status: 'sending',
-            citations: []
+            citations: [],
+            thinkingText: ''
         };
 
         setMessages((prev) => [...prev, aiPlaceholder]);
@@ -92,13 +93,27 @@ export default function WorkspaceWrapper() {
                     )
                 );
             },
-            onComplete: (finalMessage) => {
-                // Swap the streaming bubble with the complete structured payload
+            onThinking: (chunk) => {
+                // Accumulate LLM internal reasoning chunks into the bubble's thinking panel
                 setMessages((prev) =>
                     prev.map((msg) =>
-                        msg.id === aiMessageId ? finalMessage : msg
+                        msg.id === aiMessageId
+                            ? { ...msg, thinkingText: (msg.thinkingText || '') + chunk }
+                            : msg
                     )
                 );
+            },
+            onComplete: (finalMessage) => {
+                // Preserve accumulated thinkingText when swapping to the final message
+                setMessages((prev) => {
+                    const streamingMsg = prev.find((msg) => msg.id === aiMessageId);
+                    const thinkingText = streamingMsg?.thinkingText || '';
+                    return prev.map((msg) =>
+                        msg.id === aiMessageId
+                            ? { ...finalMessage, thinkingText }
+                            : msg
+                    );
+                });
             },
             onError: (errText) => {
                 // Render error state on failure for retry triggers

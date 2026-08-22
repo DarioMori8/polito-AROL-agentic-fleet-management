@@ -1,3 +1,10 @@
+import { pdfjs } from 'react-pdf';
+
+// Initialize PDF.js worker for all stories that use react-pdf.
+// Pointing to the CDN build matching the installed pdfjs-dist version avoids
+// the Vite ?url import that only works inside the main app bundle.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 /** @type { import('@storybook/react-vite').Preview } */
 const preview = {
   parameters: {

@@ -1,5 +1,5 @@
-import React from 'react';
-import { FileText, AlertCircle, RotateCcw, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { FileText, AlertCircle, RotateCcw, Check, ChevronDown } from 'lucide-react';
 import { DEFAULT_CHAT_MESSAGE } from '../../models/ChatMessage';
 import '@/styles/ChatBubble.css';
 
@@ -12,10 +12,13 @@ import '@/styles/ChatBubble.css';
  */
 export default function ChatBubble({ message, onCitationClick, onRetry }) {
     // Structure of the message object
-    const { sender, text, timestamp, status, citations, metadata } = {
+    const { sender, text, timestamp, status, citations, metadata, thinkingText } = {
         ...DEFAULT_CHAT_MESSAGE,
         ...message,
     };
+
+    // Local state for the collapsible AI reasoning panel
+    const [isThinkingOpen, setIsThinkingOpen] = useState(false);
 
     // Check if the message is from the user
     const isUser = sender === 'user';
@@ -70,7 +73,6 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
         return jsxElements;
     };
 
-
     // Rendering the chat bubble
     return (
         <div className={`chat-row ${isUser ? 'user' : 'assistant'}`}>
@@ -80,6 +82,30 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
                 </span>
 
                 <div className="bubble">
+                    {/* AI Thinking Accordion — shown only for assistant messages with reasoning content */}
+                    {!isUser && thinkingText && (
+                        <div className="thinking-accordion">
+                            <button
+                                className="thinking-toggle"
+                                onClick={() => setIsThinkingOpen((open) => !open)}
+                                aria-expanded={isThinkingOpen}
+                            >
+                                <span className="thinking-toggle-icon">💭</span>
+                                <span className="thinking-toggle-label">
+                                    {isThinkingOpen ? 'Nascondi ragionamento' : 'Mostra ragionamento'}
+                                </span>
+                                <ChevronDown
+                                    size={14}
+                                    className={`thinking-chevron ${isThinkingOpen ? 'open' : ''}`}
+                                />
+                            </button>
+                            <div className={`thinking-panel ${isThinkingOpen ? 'expanded' : ''}`}>
+                                <p className="thinking-content">{thinkingText}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Display the message text */}
                     <div className="bubble-text">{renderContent(displayText)}</div>
 
                     {/* Interactive citations from Technical Manuals */}
@@ -98,6 +124,7 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
                         </div>
                     )}
 
+                    {/* Display the message footer with timestamp and confidence badge */}
                     <div className="bubble-footer">
                         <span>{timestamp}</span>
                         {isUser && status === 'sent' && <Check size={12} style={{ color: 'rgba(255, 255, 255, 0.9)' }} />}

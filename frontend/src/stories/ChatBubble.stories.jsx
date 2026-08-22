@@ -36,3 +36,36 @@ UserConnectionError.args = {
     },
     onRetry: (msg) => alert(`Retry attempt for: "${msg.text}"`)
 };
+
+// Scenario 3: AI response WITH thinking text visible (accordion collapsed by default)
+export const AssistantWithThinking = Template.bind({});
+AssistantWithThinking.args = {
+    message: {
+        sender: 'assistant',
+        text: 'The tightening torque for the M16 base bolts must be **120.0 Nm** as specified in the anchoring manual.',
+        timestamp: '14:22',
+        status: 'sent',
+        thinkingText: `The user is asking about torque specs for M16 bolts on the capper base.
+Let me reason through this: the machine is a Euro VP series, so I need to look at the anchoring specifications document.
+The anchoring spec document (Specifiche_Ancoraggio_AROL.pdf) states M16 class 8.8 steel rods, torqued to 120.0 Nm ±5 Nm on cured concrete of min 25 MPa.
+I should cite this clearly and make sure the operator knows the tolerance range.`,
+        citations: [
+            { docName: 'Specifiche_Ancoraggio_AROL.pdf', page: 15 }
+        ],
+        metadata: { confidence: 0.97 }
+    }
+};
+
+// Scenario 4: AI still streaming — thinking arrived but response text not yet
+export const AssistantThinkingOnly = Template.bind({});
+AssistantThinkingOnly.args = {
+    message: {
+        sender: 'assistant',
+        text: '',
+        timestamp: '14:23',
+        status: 'sending',
+        thinkingText: `Analyzing the query about capper vibration...
+Checking the Euro VP maintenance manual for roller bearing specs.
+Cross-referencing with the vibration alarm thresholds table on page 38.`,
+    }
+};

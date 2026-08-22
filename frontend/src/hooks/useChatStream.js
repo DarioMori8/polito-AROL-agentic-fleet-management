@@ -51,6 +51,7 @@ export default function useChatStream() {
         machineId = 'generic',
         messageId,
         onToken,
+        onThinking,
         onComplete,
         onError
     }) => {
@@ -220,9 +221,10 @@ export default function useChatStream() {
                                 break;
 
                             case 'thinking':
-                                // LLM internal reasoning chunks — exposed for optional UI display
-                                // (e.g. a collapsible "Thinking..." panel)
-                                // Not forwarded to onToken so it doesn't pollute the answer text
+                                // LLM internal reasoning chunks — forwarded to optional UI collapsible panel
+                                if (onThinking && parsedData.text) {
+                                    onThinking(parsedData.text);
+                                }
                                 break;
 
                             case 'token':

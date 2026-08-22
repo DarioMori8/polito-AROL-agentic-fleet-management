@@ -222,3 +222,94 @@
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1.0); }
 }
+
+/* =========================================================
+   AI THINKING ACCORDION (Collapsible Reasoning Panel)
+   ========================================================= */
+
+.thinking-accordion {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #d1dce8;
+}
+
+/* Toggle button — full width, minimal, accessible */
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  color: var(--arol-sky);
+  font-family: var(--font-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease, color 0.15s ease;
+  /* SAFE TOUCH TARGET */
+  min-height: 36px;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.thinking-toggle:hover {
+  background-color: var(--arol-sky-light);
+}
+
+.thinking-toggle:active {
+  background-color: rgba(64, 123, 158, 0.2);
+}
+
+.thinking-toggle-icon {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.thinking-toggle-label {
+  flex-grow: 1;
+}
+
+/* Chevron rotates 180° when panel is open */
+.thinking-chevron {
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+  color: var(--arol-sky);
+  opacity: 0.75;
+}
+
+.thinking-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* Panel collapse animation via max-height trick */
+.thinking-panel {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 0;
+}
+
+.thinking-panel.expanded {
+  max-height: 400px;
+  opacity: 1;
+}
+
+/* Inner reasoning text */
+.thinking-content {
+  margin: 8px 0 2px 0;
+  padding: 10px 12px;
+  background-color: rgba(64, 123, 158, 0.06);
+  border-left: 3px solid var(--arol-sky);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-family: var(--font-primary);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #4a5568;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

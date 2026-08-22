@@ -263,7 +263,7 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 - [x] **#4 — Highlight citazioni AI direttamente sul testo PDF** `🔵 Miglioramento`
   Quando l'AI restituisce una citazione (`{ doc, page, snippet }`), evidenziare il testo corrispondente direttamente nella pagina PDF nel `ManualViewer`. Attualmente viene mostrato solo il banner `AIReferenceBanner` con lo snippet. Usare le API di `react-pdf` per cercare e selezionare visivamente il testo nella pagina indicata.
 
-- [ ] **#5 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
+- [x] **#5 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
   Quando l'AI invia eventi `thinking` (ragionamento interno del modello), mostrare un elemento collassabile nella bolla AI — es. un accordeon `💭 Mostra ragionamento` — che l'operatore può espandere per vedere il processo decisionale dell'AI. Utile per debug e per la fiducia nel sistema.
 
 - [ ] **#6 — Drawer ricerca testo nel PDF** `🟡 UX`

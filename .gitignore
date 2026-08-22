@@ -34,6 +34,9 @@ node_modules/
 .vscode/
 .idea/
 .agents/
+AGENTS.md
 
 temp/
+
+*.pdf
 
