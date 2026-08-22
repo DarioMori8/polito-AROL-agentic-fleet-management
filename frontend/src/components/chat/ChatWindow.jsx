@@ -79,11 +79,11 @@ export default function ChatWindow({
             {/* 3. INTERACTIVE FOOTER - Quick access Suggestion Chips and Input Bar */}
             <footer className="chat-footer-controls">
                 {/* Render suggestion chips only if there are no pending loadings to avoid input conflicts */}
-                {!isLoading && onSuggestionClick && (
+                {/* {!isLoading && onSuggestionClick && (
                     <div className="chips-wrapper-scroll">
                         <SuggestionChips onSuggestionClick={onSuggestionClick} />
                     </div>
-                )}
+                )} */}
 
                 <ChatInput
                     onSendMessage={onSendMessage}

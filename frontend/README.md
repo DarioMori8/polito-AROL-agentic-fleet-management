@@ -263,20 +263,20 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 - [x] **#4 — Highlight citazioni AI direttamente sul testo PDF** `🔵 Miglioramento`
   Quando l'AI restituisce una citazione (`{ doc, page, snippet }`), evidenziare il testo corrispondente direttamente nella pagina PDF nel `ManualViewer`. Attualmente viene mostrato solo il banner `AIReferenceBanner` con lo snippet. Usare le API di `react-pdf` per cercare e selezionare visivamente il testo nella pagina indicata.
 
-- [ ] **#5 — Suggestion Chips contestuali e utili** `🟡 UX`
-  Le `SuggestionChips` mostrano domande suggerite statiche. Renderle contestuali alla macchina attiva (`activeMachine.model`, stato operativo) e al momento della conversazione (es. proporre domande di follow-up basate sull'ultimo messaggio AI). Le chip devono variare in base al modello macchina e allo stato (`online` / `maintenance`).
+- [ ] **#5 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
+  Quando l'AI invia eventi `thinking` (ragionamento interno del modello), mostrare un elemento collassabile nella bolla AI — es. un accordeon `💭 Mostra ragionamento` — che l'operatore può espandere per vedere il processo decisionale dell'AI. Utile per debug e per la fiducia nel sistema.
 
-- [ ] **#6 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
-  Collegato al to-do #3: quando il backend invia eventi `thinking` (ragionamento interno del modello), mostrare un elemento collassabile nella bolla AI — es. un accordeon `💭 Mostra ragionamento` — che l'operatore può espandere per vedere il processo decisionale dell'AI. Utile per debug e per la fiducia nel sistema.
-
-- [ ] **#7 — Drawer ricerca testo nel PDF** `🟡 UX`
+- [ ] **#6 — Drawer ricerca testo nel PDF** `🟡 UX`
   Il componente `SearchDrawer.jsx` esiste già ma va collegato alla logica di ricerca testuale nel `ManualViewer`. Implementare la ricerca full-text nelle pagine del documento aperto usando le API di `react-pdf`, con highlight dei risultati e navigazione tra occorrenze (prev/next).
 
-- [ ] **#8 - Implementazione frontend Chat History (local storage)**
+- [ ] **#7 - Implementazione frontend Chat History (local storage)**
   Il backend è stato costruito per poter riprendere le conversazioni passate, salvandole su un database SQLite.
 
   Backend route (chat.py): GET /v1/conversations/{session_id}/messages
   Risultato: Restituisce l'oggetto ConversationHistory che mappa l'intero storico (utente e assistente) con eventuali citazioni dei manuali allegate.
+
+- [ ] **#8 - Migliorare renderizzazione markdown**
+  Aggiungere la visualizzazione di tabelle, stili markdown principali, ecc... per un output più leggibile e user-friendly.
 
 - [ ] **#9 — Aggiornare sezione frontend del README generale del workspace**
 
