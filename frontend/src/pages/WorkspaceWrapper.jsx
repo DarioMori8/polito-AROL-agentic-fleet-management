@@ -141,7 +141,7 @@ export default function WorkspaceWrapper() {
     return (
         <ChatWorkspace
             messages={messages}
-            isLoading={isStreaming && messages[messages.length - 1]?.status === 'sending' && messages[messages.length - 1]?.text === ''}
+            isLoading={isStreaming && messages[messages.length - 1]?.status === 'sending' && messages[messages.length - 1]?.text === '' && !messages[messages.length - 1]?.thinkingText}
             onSendMessage={handleSendMessage}
             onSuggestionClick={handleSuggestionClick}
             onBackClick={handleBackToFleet}

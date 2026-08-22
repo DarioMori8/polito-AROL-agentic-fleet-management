@@ -288,14 +288,15 @@
 
 /* Panel collapse animation via max-height trick */
 .thinking-panel {
-  overflow: hidden;
+  overflow-y: hidden;
   max-height: 0;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
+  transition: max-height 0.4s ease, opacity 0.4s ease;
   opacity: 0;
 }
 
 .thinking-panel.expanded {
-  max-height: 400px;
+  max-height: 500px;
+  overflow-y: auto;
   opacity: 1;
 }
 

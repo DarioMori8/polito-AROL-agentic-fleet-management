@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     LANGFUSE_PUBLIC_KEY: str
     LANGFUSE_SECRET_KEY: str
     LANGFUSE_HOST: str = "http://localhost:3000"
+    LANGFUSE_BASE_URL: str | None = None
+
 
     CHECKPOINT_DB_PATH: str = str(Path(__file__).resolve().parent.parent / "data" / "checkpoints.sqlite")
     DOMAIN_DB_PATH: str = str(Path(__file__).resolve().parent.parent / "data" / "domain.sqlite")
@@ -29,12 +31,14 @@ settings = Settings()
 
 
 
-# Ponte esplicito verso os.environ: CallbackHandler() di Langfuse legge le
-# credenziali direttamente da os.environ, non dall'oggetto `settings` di
-# pydantic — che invece le ha lette dal .env nel proprio modello interno,
-# senza esportarle automaticamente nell'ambiente di processo. Senza
-# questo blocco, settings.LANGFUSE_PUBLIC_KEY sarebbe valorizzato
-# correttamente ma CallbackHandler() vedrebbe comunque variabili vuote.
+# Explicit bridge to os.environ: Langfuse's CallbackHandler reads credentials
+# directly from os.environ, not from the pydantic settings object.
+# We set both LANGFUSE_HOST (legacy) and LANGFUSE_BASE_URL (canonical SDK name)
+# so whichever version of the SDK is installed will find the right variable.
 os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.LANGFUSE_PUBLIC_KEY)
 os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.LANGFUSE_SECRET_KEY)
 os.environ.setdefault("LANGFUSE_HOST", settings.LANGFUSE_HOST)
+if settings.LANGFUSE_BASE_URL:
+    os.environ.setdefault("LANGFUSE_BASE_URL", settings.LANGFUSE_BASE_URL)
+else:
+    os.environ.setdefault("LANGFUSE_BASE_URL", settings.LANGFUSE_HOST)

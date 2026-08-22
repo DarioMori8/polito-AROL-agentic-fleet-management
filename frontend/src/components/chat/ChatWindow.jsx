@@ -45,7 +45,7 @@ export default function ChatWindow({
             <main className="chat-messages-viewport" ref={scrollContainerRef}>
                 <div className="messages-scroll-area">
                     {messages
-                        .filter((msg) => !(msg.status === 'sending' && msg.text === ''))
+                        .filter((msg) => !(msg.status === 'sending' && msg.text === '' && !msg.thinkingText))
                         .map((msg) => (
                             <ChatBubble
                                 key={msg.id}
