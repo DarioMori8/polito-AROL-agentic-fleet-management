@@ -266,7 +266,7 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 - [x] **#5 — Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
   Quando l'AI invia eventi `thinking` (ragionamento interno del modello), mostrare un elemento collassabile nella bolla AI — es. un accordeon `💭 Mostra ragionamento` — che l'operatore può espandere per vedere il processo decisionale dell'AI. Utile per debug e per la fiducia nel sistema.
 
-- [ ] **#6 — Drawer ricerca testo nel PDF** `🟡 UX`
+- [x] **#6 — Drawer ricerca testo nel PDF** `🟡 UX`
   Il componente `SearchDrawer.jsx` esiste già ma va collegato alla logica di ricerca testuale nel `ManualViewer`. Implementare la ricerca full-text nelle pagine del documento aperto usando le API di `react-pdf`, con highlight dei risultati e navigazione tra occorrenze (prev/next).
 
 - [ ] **#7 - Implementazione frontend Chat History (local storage)**

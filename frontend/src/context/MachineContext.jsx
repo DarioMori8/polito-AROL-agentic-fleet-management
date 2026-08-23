@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { MOCK_FLEET } from '../assets/mocks/MOCK_FLEET';
 import { MOCK_MANUALS } from '../assets/mocks/MOCK_MANUALS';
 
-const MachineContext = createContext(null);
+export const MachineContext = createContext(null);
 
 /**
  * Robust helper to compare industrial machine IDs.

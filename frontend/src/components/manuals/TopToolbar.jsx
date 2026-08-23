@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, Search, ZoomOut, ZoomIn, Minimize2, Maximize2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
@@ -10,6 +10,7 @@ export default function TopToolbar({
     totalPagesCount,
     handlePrevPage,
     handleNextPage,
+    handlePageChange,
     showSearchPanel,
     setShowSearchPanel,
     zoom,
@@ -18,23 +19,37 @@ export default function TopToolbar({
     isFullscreen,
     toggleFullscreen,
 }) {
+    const [pageInputValue, setPageInputValue] = useState(currentPage.toString());
+
+    useEffect(() => {
+        setPageInputValue(currentPage.toString());
+    }, [currentPage]);
+
+    const onPageInputChange = (e) => {
+        setPageInputValue(e.target.value);
+    };
+
+    const submitPageChange = () => {
+        let newPage = parseInt(pageInputValue, 10);
+        if (!isNaN(newPage)) {
+            if (newPage < 1) newPage = 1;
+            if (newPage > totalPagesCount) newPage = totalPagesCount;
+            handlePageChange(newPage);
+            setPageInputValue(newPage.toString());
+        } else {
+            setPageInputValue(currentPage.toString());
+        }
+    };
+
+    const onPageInputKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            submitPageChange();
+            e.target.blur(); // Remove focus after submit
+        }
+    };
+
     return (
         <header className="viewer-toolbar">
-            <div className="toolbar-left-group">
-                <BookOpen className="toolbar-icon" size={18} />
-                <select
-                    className="document-selector-dropdown"
-                    value={activeDocName}
-                    onChange={handleDocChange}
-                    aria-label="Select Technical Document"
-                >
-                    {activeManuals.map((m) => (
-                        <option key={m.filename} value={m.filename}>
-                            {m.filename.length > 25 ? `${m.filename.substring(0, 25)}...` : m.filename}
-                        </option>
-                    ))}
-                </select>
-            </div>
 
             <div className="toolbar-center-navigation">
                 <Button
@@ -48,7 +63,18 @@ export default function TopToolbar({
                 </Button>
 
                 <div className="page-counter-input-row">
-                    <span className="current-page-tag">Page {currentPage}</span>
+                    <span className="current-page-tag">Page</span>
+                    <input
+                        type="number"
+                        className="page-input"
+                        value={pageInputValue}
+                        onChange={onPageInputChange}
+                        onKeyDown={onPageInputKeyDown}
+                        onBlur={submitPageChange}
+                        min={1}
+                        max={totalPagesCount}
+                        aria-label="Current Page"
+                    />
                     <span className="divider-slash">/</span>
                     <span className="total-pages-tag">{totalPagesCount}</span>
                 </div>

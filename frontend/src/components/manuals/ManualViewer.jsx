@@ -43,6 +43,8 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [showSearchPanel, setShowSearchPanel] = useState(false);
+    const [pdfTextContent, setPdfTextContent] = useState([]);
+    const [isExtractingText, setIsExtractingText] = useState(false);
 
     // Utility states
     const [copied, setCopied] = useState(false);
@@ -59,6 +61,11 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
             }
         }
     }, [activeManuals, activeDocName]);
+
+    // Clear extracted text when changing document
+    useEffect(() => {
+        setPdfTextContent([]);
+    }, [activeDocName]);
 
     // Settle on the active doc based on the selected citation
     useEffect(() => {
@@ -77,66 +84,41 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         }
     }, [selectedCitation, activeManuals]);
 
-    // 0. Retrieve current active manual details
+    // Retrieve current active manual details
     const activeManualRecord = activeManuals.find(m => m.filename === activeDocName);
     const totalPagesCount = numPages ?? (activeManualRecord ? activeManualRecord.page_count : 100);
 
-    // 1. Build the absolute PDF URL.
+    // Build the absolute PDF URL.
     // The backend returns a relative path (e.g. "/static/manuals/file.pdf").
     // We must prepend the API origin so react-pdf fetches from the backend,
     // not from the Vite dev server (different port → wrong origin → Invalid PDF).
     const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000';
     const activePdfUrl = activeManualRecord?.url
-        ? `${API_BASE_URL}${activeManualRecord.url}`
+        ? (activeManualRecord.url.startsWith('http') || activeManualRecord.url.startsWith('blob:') ? activeManualRecord.url : `${API_BASE_URL}${activeManualRecord.url}`)
         : null;
 
-    const onDocumentLoadSuccess = ({ numPages }) => {
-        setNumPages(numPages);
+    // Callback to extract text from each page of PDF when a document is loaded
+    const onDocumentLoadSuccess = async (pdf) => {
+        setNumPages(pdf.numPages);
         // Reset to page 1 only if current page exceeds the real page count
-        if (currentPage > numPages) setCurrentPage(1);
-    };
+        if (currentPage > pdf.numPages) setCurrentPage(1);
 
-    const onDocumentLoadError = (error) => {
-        console.error('PDF load failed', {
-            url: activePdfUrl,
-            message: error?.message || String(error)
-        });
-    };
-
-    // 2. Build the viewer card data: prioritize live RAG citation snippets, then show a generic placeholder
-    const buildPageCard = () => {
-        // 1. If the user navigated to this exact page via an AI citation and we have a real RAG snippet, show it
-        if (selectedCitation && selectedCitation.docName === activeDocName && selectedCitation.page === currentPage && selectedCitation.snippet) {
-            return {
-                section: 'AI RAG Retrieved Segment',
-                title: 'LIVE VECTOR DB DOCUMENT EXTRACT',
-                text: selectedCitation.snippet,
-                specs: [
-                    { label: 'Source File', value: activeDocName },
-                    { label: 'Reference Page', value: `${currentPage}` },
-                    { label: 'Database Segment', value: 'ChromaDB Active Chunk' }
-                ],
-                blueprintType: 'default',
-                isSnippetInjected: true
-            };
+        setIsExtractingText(true);
+        const extractedText = [];
+        try {
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                extractedText.push({ page: i, text: pageText });
+            }
+            setPdfTextContent(extractedText);
+        } catch (error) {
+            console.error("Error extracting PDF text for search", error);
+        } finally {
+            setIsExtractingText(false);
         }
-
-        // 2. Generic placeholder for pages without a live RAG snippet
-        const machineLabel = activeMachine ? `${activeMachine.name || activeMachine.id}` : 'Unknown Machine';
-        return {
-            section: 'Technical Instruction Sheet',
-            title: 'AROL SYSTEM RUNTIME DOCUMENTATION',
-            text: `This technical documentation segment is dynamically cataloged on the server. You are viewing page ${currentPage} of ${activeDocName}. Please consult the RAG chatbot to query specific troubleshooting procedures or maintenance thresholds from this manual.`,
-            specs: [
-                { label: 'Document Name', value: activeDocName },
-                { label: 'Active Page', value: `${currentPage} / ${totalPagesCount}` },
-                { label: 'Active Machine', value: machineLabel }
-            ],
-            blueprintType: 'default'
-        };
     };
-
-    const pageCard = buildPageCard();
 
     // DOCUMENT NAVIGATION HANDLERS //
     // Document Navigation - Next Page
@@ -150,6 +132,13 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
     const handlePrevPage = () => {
         if (currentPage > 1) {
             setCurrentPage((prev) => prev - 1);
+        }
+    };
+
+    // Document Navigation - Specific Page
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPagesCount) {
+            setCurrentPage(newPage);
         }
     };
 
@@ -188,20 +177,17 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
 
-    // Document Navigation - Client-side index search (title/filename only).
-    // NOTE: Full-text page search requires a backend RAG query to ChromaDB — not available client-side.
-    const handleSearch = (e) => {
-        const query = e.target.value;
-        setSearchQuery(query);
-        if (!query.trim()) {
+    // Document Navigation - Client-side full-text search across current document and titles.
+    useEffect(() => {
+        if (!searchQuery.trim()) {
             setSearchResults([]);
             return;
         }
 
-        const lowerQuery = query.toLowerCase();
+        const lowerQuery = searchQuery.toLowerCase();
         const matches = [];
 
-        // Search across all available manuals by title and filename
+        // 1. Search across all available manuals by title and filename
         activeManuals.forEach(m => {
             const titleMatch = m.title?.toLowerCase().includes(lowerQuery);
             const filenameMatch = m.filename?.toLowerCase().includes(lowerQuery);
@@ -215,7 +201,36 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
             }
         });
 
+        // 2. Search inside the CURRENT document text
+        pdfTextContent.forEach((item) => {
+            const textLower = item.text.toLowerCase();
+            let currentIndex = 0;
+            while (currentIndex < textLower.length) {
+                const index = textLower.indexOf(lowerQuery, currentIndex);
+                if (index === -1) break;
+
+                const start = Math.max(0, index - 40);
+                const end = Math.min(item.text.length, index + 40);
+                let snippet = item.text.substring(start, end);
+                if (start > 0) snippet = '...' + snippet;
+                if (end < item.text.length) snippet = snippet + '...';
+
+                matches.push({
+                    docName: activeDocName,
+                    page: item.page,
+                    section: `Page ${item.page}`,
+                    title: snippet
+                });
+
+                currentIndex = index + lowerQuery.length;
+            }
+        });
+
         setSearchResults(matches);
+    }, [searchQuery, pdfTextContent, activeManuals, activeDocName]);
+
+    const handleSearch = (e) => {
+        setSearchQuery(e.target.value);
     };
 
     // Document Navigation - Handle user clicks on search results
@@ -247,6 +262,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                 totalPagesCount={totalPagesCount}
                 handlePrevPage={handlePrevPage}
                 handleNextPage={handleNextPage}
+                handlePageChange={handlePageChange}
                 showSearchPanel={showSearchPanel}
                 setShowSearchPanel={setShowSearchPanel}
                 zoom={zoom}
@@ -264,6 +280,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                 handleSearch={handleSearch}
                 searchResults={searchResults}
                 handleJumpToSearchMatch={handleJumpToSearchMatch}
+                isExtractingText={isExtractingText}
             />
 
 
@@ -279,6 +296,7 @@ export default function ManualViewer({ selectedCitation = null, defaultDoc = 'Ma
                         ? selectedCitation.snippet
                         : null
                 }
+                searchQuery={searchQuery}
             />
 
             {/* 4. FLOATING AI GROUNDED REFERENCE BANNER */}

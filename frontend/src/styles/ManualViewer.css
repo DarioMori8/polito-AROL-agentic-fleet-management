@@ -149,6 +149,33 @@ mark.pdf-highlight {
   white-space: nowrap;
 }
 
+.page-input {
+  width: 44px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: var(--white);
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.82rem;
+  padding: 4px;
+  outline: none;
+  -moz-appearance: textfield;
+  transition: all 0.2s ease;
+}
+
+.page-input::-webkit-outer-spin-button,
+.page-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-input:focus {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: var(--white);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+
 .current-page-tag {
   font-weight: 800;
 }

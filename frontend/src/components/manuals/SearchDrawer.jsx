@@ -8,6 +8,7 @@ export default function SearchDrawer({
     handleSearch,
     searchResults,
     handleJumpToSearchMatch,
+    isExtractingText,
 }) {
     return (<>
         {showSearchPanel && (
@@ -30,8 +31,11 @@ export default function SearchDrawer({
                     </div>
 
                     <div className="search-results-list">
-                        {searchQuery && searchResults.length === 0 && (
+                        {searchQuery && searchResults.length === 0 && !isExtractingText && (
                             <div className="search-no-results">No technical matches found.</div>
+                        )}
+                        {searchQuery && isExtractingText && (
+                            <div className="search-no-results">Indexing document...</div>
                         )}
                         {searchResults.map((match, idx) => (
                             <button
