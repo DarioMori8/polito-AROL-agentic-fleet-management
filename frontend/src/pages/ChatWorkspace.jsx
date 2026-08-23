@@ -4,6 +4,7 @@ import { MessageSquare, BookOpen, QrCode } from 'lucide-react';
 import { useMachine } from '../context/MachineContext';
 import ChatWindow from '../components/chat/ChatWindow';
 import ManualViewer from '../components/manuals/ManualViewer';
+import ChatHistoryDrawer from '../components/chat/ChatHistoryDrawer';
 import '../styles/ChatWorkspace.css';
 
 /**
@@ -17,7 +18,14 @@ export default function ChatWorkspace({
     isLoading = false,
     onSendMessage,
     onBackClick,
-    onSuggestionClick
+    onSuggestionClick,
+    onMenuToggle,
+    isDrawerOpen,
+    onCloseDrawer,
+    sessionsList,
+    currentSessionId,
+    onSelectSession,
+    onNewChat
 }) {
     const navigate = useNavigate()
 
@@ -72,6 +80,14 @@ export default function ChatWorkspace({
 
     return (
         <div className={`workspace-container ${isTabletLayout ? 'tablet-split' : 'mobile-single'}`}>
+            <ChatHistoryDrawer
+                isOpen={isDrawerOpen}
+                onClose={onCloseDrawer}
+                sessionsList={sessionsList}
+                currentSessionId={currentSessionId}
+                onSelectSession={onSelectSession}
+                onNewChat={onNewChat}
+            />
 
             {/* ==========================================
                 LAYOUT 1: TABLET SPLIT SCREEN (Multi-Column)
@@ -88,6 +104,7 @@ export default function ChatWorkspace({
                             onSuggestionClick={onSuggestionClick}
                             onBackClick={onBackClick}
                             onCitationClick={handleCitationClick}
+                            onMenuToggle={onMenuToggle}
                         />
                     </aside>
 
@@ -133,6 +150,7 @@ export default function ChatWorkspace({
                                 onSuggestionClick={onSuggestionClick}
                                 onBackClick={onBackClick}
                                 onCitationClick={handleCitationClick}
+                                onMenuToggle={onMenuToggle}
                             />
                         )}
 

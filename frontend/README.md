@@ -269,7 +269,7 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 - [x] **#6 — Drawer ricerca testo nel PDF** `🟡 UX`
   Il componente `SearchDrawer.jsx` esiste già ma va collegato alla logica di ricerca testuale nel `ManualViewer`. Implementare la ricerca full-text nelle pagine del documento aperto usando le API di `react-pdf`, con highlight dei risultati e navigazione tra occorrenze (prev/next).
 
-- [ ] **#7 - Implementazione frontend Chat History (local storage)**
+- [x] **#7 - Implementazione frontend Chat History (local storage)**
   Il backend è stato costruito per poter riprendere le conversazioni passate, salvandole su un database SQLite.
 
   Backend route (chat.py): GET /v1/conversations/{session_id}/messages

@@ -42,18 +42,23 @@ export default function useChatStream() {
      * @param {string} messageId - The ID already assigned to the AI placeholder bubble.
      *   Reused in the finalMessage so the id stays consistent throughout the whole lifecycle
      *   (placeholder → streaming → complete). If omitted, a new id is generated as fallback.
+     * @param {string} sessionId - Optional past session ID to resume from.
      * @param {Function} onToken - Callback triggered when a new text chunk is parsed: (tokenText) => {}
+     * @param {Function} onThinking - Callback for reasoning chunks
      * @param {Function} onComplete - Callback triggered when the stream ends: (finalMessageObject) => {}
      * @param {Function} onError - Callback triggered on connection/parsing failure.
+     * @param {Function} onSessionCreated - Callback triggered when the backend emits a session_id.
      */
     const streamMessage = useCallback(async ({
         query,
         machineId = 'generic',
         messageId,
+        sessionId,
         onToken,
         onThinking,
         onComplete,
-        onError
+        onError,
+        onSessionCreated
     }) => {
         // Abort any existing stream to prevent race conditions on fast-clicking operators
         abortStream();
@@ -131,10 +136,6 @@ export default function useChatStream() {
         }
 
         // Real backend streaming
-        // PERSISTENCE: Check if there is an active session_id in sessionStorage for this machine
-        const sessionKey = `arol_session_id_${machineId}`;
-        const savedSessionId = sessionStorage.getItem(sessionKey) || null;
-
         try {
             const response = await fetch(`${API_BASE_URL}/v1/chat/stream`, {
                 method: 'POST',
@@ -146,7 +147,7 @@ export default function useChatStream() {
                 body: JSON.stringify({
                     query: query,
                     machine_id: machineId,
-                    session_id: savedSessionId
+                    session_id: sessionId
                 }),
             });
 
@@ -171,7 +172,7 @@ export default function useChatStream() {
             let buffer = '';
             let accumulatedText = '';
             let citations = [];
-            let sessionId = savedSessionId;
+            let currentSessionId = sessionId;
             let confidence = 1.0;
             let needsEscalation = false;
 
@@ -215,8 +216,8 @@ export default function useChatStream() {
                             case 'start':
                                 // Backend sends session_id from the very first event
                                 if (parsedData.session_id) {
-                                    sessionId = parsedData.session_id;
-                                    sessionStorage.setItem(sessionKey, sessionId);
+                                    currentSessionId = parsedData.session_id;
+                                    if (onSessionCreated) onSessionCreated(currentSessionId);
                                 }
                                 break;
 
@@ -256,8 +257,8 @@ export default function useChatStream() {
                             case 'done':
                                 // Final event — capture session_id for the next turn
                                 if (parsedData.session_id) {
-                                    sessionId = parsedData.session_id;
-                                    sessionStorage.setItem(sessionKey, sessionId);
+                                    currentSessionId = parsedData.session_id;
+                                    if (onSessionCreated) onSessionCreated(currentSessionId);
                                 }
                                 break;
 
@@ -295,7 +296,7 @@ export default function useChatStream() {
                 metadata: {
                     confidence: confidence,
                     needsEscalation: needsEscalation,
-                    sessionId: sessionId
+                    sessionId: currentSessionId
                 }
             };
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, ShieldAlert, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Cpu, ShieldAlert, AlertTriangle, CheckCircle2, History } from 'lucide-react';
 import Header from '../ui/Header';
 
 const renderStatusBadge = (status) => {
@@ -28,18 +28,28 @@ const renderStatusBadge = (status) => {
     );
 };
 
-export default function ChatWindowHeader({ activeMachine, onBackClick }) {
+export default function ChatWindowHeader({ activeMachine, onBackClick, onMenuToggle }) {
     return (
         <Header onBackClick={onBackClick}>
-            <div className="header-machine-info">
-                <div className="machine-title-row">
-                    <Cpu size={18} className="machine-hardware-icon" />
-                    <h1 className="machine-name">{activeMachine?.name || 'Macchinario AROL'}</h1>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div className="header-machine-info">
+                    <div className="machine-title-row">
+                        <Cpu size={18} className="machine-hardware-icon" />
+                        <h1 className="machine-name">{activeMachine?.name || 'Macchinario AROL'}</h1>
+                    </div>
+                    <div className="machine-meta-row">
+                        <span className="machine-id">ID: {activeMachine?.id || '---'}</span>
+                        {activeMachine?.status && renderStatusBadge(activeMachine.status)}
+                    </div>
                 </div>
-                <div className="machine-meta-row">
-                    <span className="machine-id">ID: {activeMachine?.id || '---'}</span>
-                    {activeMachine?.status && renderStatusBadge(activeMachine.status)}
-                </div>
+                <button
+                    className="header-menu-btn"
+                    onClick={onMenuToggle}
+                    aria-label="Apri cronologia chat"
+                    style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', marginRight: '12px', display: 'flex', alignItems: 'center' }}
+                >
+                    <History size={24} />
+                </button>
             </div>
         </Header>
     );

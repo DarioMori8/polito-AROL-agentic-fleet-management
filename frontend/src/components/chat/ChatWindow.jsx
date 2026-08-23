@@ -19,7 +19,8 @@ export default function ChatWindow({
     onSuggestionClick,
     onBackClick,
     onCitationClick,
-    onRetryMessage
+    onRetryMessage,
+    onMenuToggle
 }) {
     const messagesEndRef = useRef(null);
     const scrollContainerRef = useRef(null);
@@ -39,7 +40,7 @@ export default function ChatWindow({
     return (
         <div className="chat-window-layout">
             {/* 1. INDUSTRIAL HEADER - Back button, Machine info and operator silhouette */}
-            <ChatWindowHeader activeMachine={activeMachine} onBackClick={onBackClick} />
+            <ChatWindowHeader activeMachine={activeMachine} onBackClick={onBackClick} onMenuToggle={onMenuToggle} />
 
             {/* 2. CONVERSATION FEED - Scrollable area for messages */}
             <main className="chat-messages-viewport" ref={scrollContainerRef}>
