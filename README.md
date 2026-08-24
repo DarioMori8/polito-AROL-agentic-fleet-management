@@ -214,7 +214,52 @@ _TODO_
 
 # Frontend
 
-_TODO_
+Mobile-first **Progressive Web Application (PWA)** costruita con React 19 + Vite 8, ottimizzata per tecnici di stabilimento su dispositivi rugged. La UI segue il design system **AROL Rugged UI** (touch target ≥ 48 px, alto contrasto, design token in `tokens.css`).
+
+La documentazione completa del frontend — architettura, design system, flusso SSE e struttura del progetto — è in [`frontend/README.md`](frontend/README.md).
+
+## Tech stack principale
+
+| Layer | Libreria |
+| :--- | :--- |
+| Framework | React 19 + Vite 8 |
+| Routing | React Router v8 |
+| PWA | `vite-plugin-pwa` (manifest + service worker) |
+| PDF Viewer | `react-pdf` v10 |
+| Markdown | `react-markdown` + `remark-gfm` |
+| QR Scanner | `html5-qrcode` |
+| Produzione | Nginx Alpine (multi-stage Dockerfile) |
+
+## Features principali
+
+- **Chat AI in streaming** — SSE token-by-token via `POST /v1/chat/stream`; parsing di eventi `start`, `thinking`, `token`, `citations`, `done`, `error`
+- **AI Thinking accordion** — il ragionamento interno del modello (`thinking` events) è mostrato in un pannello collassabile `💭 Mostra ragionamento` nelle bolle AI
+- **Viewer PDF integrato** — navigazione pagine, zoom, fullscreen, citation routing (click sulla citazione → pagina esatta del manuale)
+- **Ricerca full-text nel PDF** — testo estratto client-side con `react-pdf` e ricercato in real-time con navigazione ai match
+- **Chat History** — sessioni per macchina salvate in `localStorage`; restore automatico dell'ultima sessione dal backend (`GET /v1/conversations/{session_id}/messages`); `ChatHistoryDrawer` per navigare le conversazioni passate
+- **Rendering Markdown GFM** — risposte AI con tabelle, bold, code block, liste via `react-markdown` + `remark-gfm`
+- **QR Scanner** — scansione QR code delle macchine via fotocamera (`html5-qrcode`)
+- **Offline/mock mode** — `VITE_USE_MOCK=true` attiva la simulazione SSE locale senza backend
+
+## Routes
+
+| Percorso | Componente | Descrizione |
+| :--- | :--- | :--- |
+| `/` o `/fleet` | `FleetView` | Dashboard flotta con griglia macchine e filtri |
+| `/machine/:id` | `LandingQR` | Scheda macchina post-scansione QR |
+| `/workspace/:id` | `WorkspaceWrapper` | Chat AI + viewer manuali |
+| `/scanner` | `MachineScanner` | Scanner QR via fotocamera |
+
+## Come avviare
+
+```bash
+cd frontend
+cp .env.example .env       # configura VITE_API_URL (default: http://localhost:8000)
+npm install
+npm run dev                # → http://localhost:3000
+```
+
+In Docker (stack completo) il frontend è raggiungibile su `http://localhost:8080`.
 
 # Mock-backoffice
 
