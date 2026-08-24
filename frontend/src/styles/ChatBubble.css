@@ -314,3 +314,123 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* =========================================================
+   MARKDOWN ELEMENTS (React Markdown + GFM)
+   ========================================================= */
+
+/* Markdown Tables */
+.bubble table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 0.85rem;
+}
+
+.bubble th, .bubble td {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.chat-row.assistant .bubble th, .chat-row.assistant .bubble td {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.chat-row.user .bubble th, .chat-row.user .bubble td {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.bubble th {
+  font-weight: 700;
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.chat-row.user .bubble th {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Markdown Code Blocks */
+.bubble pre {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  overflow-x: auto;
+  margin: 12px 0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+}
+
+/* Inline Code */
+.bubble code {
+  font-family: 'Courier New', Courier, monospace;
+  background-color: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #e83e8c;
+}
+
+.chat-row.user .bubble code {
+  background-color: rgba(0, 0, 0, 0.15);
+  color: #ffb8d2;
+}
+
+.bubble pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+
+/* Blockquotes */
+.bubble blockquote {
+  border-left: 4px solid var(--arol-sky);
+  margin: 12px 0;
+  padding: 4px 0 4px 14px;
+  background-color: rgba(64, 123, 158, 0.05);
+  color: inherit;
+  opacity: 0.9;
+  font-style: italic;
+  border-radius: 0 4px 4px 0;
+}
+
+.chat-row.user .bubble blockquote {
+  border-left-color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Headings */
+.bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 {
+  margin: 16px 0 8px 0;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.bubble h1 { font-size: 1.4rem; }
+.bubble h2 { font-size: 1.25rem; }
+.bubble h3 { font-size: 1.1rem; }
+.bubble h4, .bubble h5, .bubble h6 { font-size: 1rem; }
+
+.bubble h1:first-child, .bubble h2:first-child, .bubble h3:first-child, 
+.bubble h4:first-child, .bubble h5:first-child, .bubble h6:first-child {
+  margin-top: 0;
+}
+
+/* Links */
+.bubble a {
+  color: var(--arol-sky);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.bubble a:hover {
+  text-decoration: underline;
+}
+
+.chat-row.user .bubble a {
+  color: #fff;
+  text-decoration: underline;
+}
+

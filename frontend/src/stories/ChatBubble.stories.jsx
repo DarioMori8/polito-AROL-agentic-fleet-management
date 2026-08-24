@@ -68,4 +68,55 @@ AssistantThinkingOnly.args = {
 Checking the Euro VP maintenance manual for roller bearing specs.
 Cross-referencing with the vibration alarm thresholds table on page 38.`,
     }
+};
+
+// Scenario 5: AI response with a Markdown Table
+export const AssistantWithMarkdownTable = Template.bind({});
+AssistantWithMarkdownTable.args = {
+    message: {
+        sender: 'assistant',
+        text: `Here is the diagnostic data for the capping heads:
+
+| Head ID | Status | Torque (Nm) | Error Code |
+|---------|--------|-------------|------------|
+| 01      | OK     | 12.4        | None       |
+| 02      | WARN   | 11.2        | E-102      |
+| 03      | OK     | 12.5        | None       |
+| 04      | FAIL   | 8.1         | E-404      |
+
+I suggest inspecting **Head 04** immediately.`,
+        timestamp: '14:30',
+        status: 'sent',
+        citations: [
+            { docName: 'Diagnostics_Manual.pdf', page: 22 }
+        ],
+        metadata: { confidence: 0.99 }
+    }
+};
+
+// Scenario 6: AI response with Code Blocks and Blockquotes
+export const AssistantWithComplexMarkdown = Template.bind({});
+AssistantWithComplexMarkdown.args = {
+    message: {
+        sender: 'assistant',
+        text: `### Configuration Update Required
+To resolve the synchronization issue, you need to update the PLC configuration parameters.
+
+> **Warning:** Ensure the machine is in STOP mode before applying these changes.
+
+Change the \`sync_delay_ms\` parameter in the JSON config:
+\`\`\`json
+{
+  "machine_id": "M-1029",
+  "parameters": {
+    "sync_delay_ms": 150,
+    "max_speed_rpm": 3000
+  }
+}
+\`\`\`
+Let me know when the update is complete.`,
+        timestamp: '14:35',
+        status: 'sent',
+        metadata: { confidence: 0.92 }
+    }
 };

@@ -275,7 +275,7 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
   Backend route (chat.py): GET /v1/conversations/{session_id}/messages
   Risultato: Restituisce l'oggetto ConversationHistory che mappa l'intero storico (utente e assistente) con eventuali citazioni dei manuali allegate.
 
-- [ ] **#8 - Migliorare renderizzazione markdown**
+- [x] **#8 - Migliorare renderizzazione markdown**
   Aggiungere la visualizzazione di tabelle, stili markdown principali, ecc... per un output più leggibile e user-friendly.
 
 - [ ] **#9 — Aggiornare sezione frontend del README generale del workspace**
