@@ -303,7 +303,5 @@ Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque con
 
 ## 📋 To-Do
 
-- [ ] **#1 — Aggiornare sezione frontend del README generale del workspace**
-
-- [ ] **#2 — Autenticazione `machine_id`** `🔴 Sicurezza`
+- [ ] **#1 — Autenticazione `machine_id`** `🔴 Sicurezza`
   Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque conosca un ID può accedere ai dati di quella macchina — non c'è verifica di autenticazione. Aggiungere un meccanismo di verifica (es. token JWT, sessione operatore) prima di caricare i dati di una macchina in `LandingQR` e `WorkspaceWrapper`.
