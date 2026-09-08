@@ -38,13 +38,16 @@ class HttpAgentClient(AgentClientBase[T]):
         self.base_url = settings.AGENTS_SERVICE_URL
 
     @retry(
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+        retry=retry_if_exception_type((httpx.ConnectTimeout, httpx.ConnectError)),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=8),
         reraise=True,
     )
     async def _post(self, url: str, payload: dict) -> httpx.Response:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # A read timeout may leave inference running downstream. Retrying it
+        # would enqueue duplicate work on the same local model.
+        timeout = httpx.Timeout(settings.AGENTS_REQUEST_TIMEOUT_SECONDS, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload)
         response.raise_for_status()
         return response

@@ -36,6 +36,10 @@ class VectorStore:
     def has_chunks(self, where: dict) -> bool:
         return bool(self.collection.get(where=where, limit=1)["ids"])
 
+    def get_languages(self, where: dict) -> list[str]:
+        records = self.collection.get(where=where, include=["metadatas"])
+        return sorted({m["language"] for m in records["metadatas"] if m.get("language")})
+
     def query(self, text: str, k: int = 5, where: dict | None = None) -> list[dict]:
         results = self.collection.query(
             query_texts=[text],

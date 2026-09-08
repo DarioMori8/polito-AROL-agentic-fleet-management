@@ -32,7 +32,13 @@ async def search_manuals(query: str, machine_id: str) -> tuple[str, dict]:
         "confidence": result.confidence,
     }
 
-    return str(artifact), artifact
+    # Keep full snippets in the artifact for the UI, but avoid flooding the
+    # routing model's context with repeated excerpts from every search attempt.
+    content = {
+        **artifact,
+        "citations": [{"doc": c.doc, "page": c.page} for c in result.citations],
+    }
+    return str(content), artifact
 
 
 

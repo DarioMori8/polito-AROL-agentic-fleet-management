@@ -542,3 +542,21 @@ L'assetto di destinazione è quindi questo:
 - **Gli agents mantengono solo Chroma.** Non leggono più una cartella condivisa: quando il backend riceve un manuale nuovo, glielo manda via HTTP su un endpoint di ingestion, e l'agente estrae il testo, calcola gli embedding e indicizza. Il seed iniziale degli otto manuali dovrà passare per la stessa strada, così la pipeline di ingestion resta una sola.
 
 Fino ad allora `MANUALS_PATH` e la cartella condivisa restano il modo con cui si lavora in locale.
+
+## Manual retrieval troubleshooting
+
+The Manuals Agent reads the indexed manual language before searching. For an
+English manual, it translates search queries into English while answering in
+the question's language. The shared agent loop preserves Ollama's assistant
+`tool_calls` and `thinking`, associates results using `tool_name`, and reserves
+a final synthesis call when the search budget is exhausted.
+
+`OLLAMA_NUM_CTX` defaults to 16384 tokens for multi-step retrieval. An empty
+manual answer returns an explicit failure with zero confidence, not a successful
+response containing only citations. Repeated citations are deduplicated.
+
+Run the regression suite inside the running service:
+
+```bash
+docker compose exec -T agents python -m unittest discover -s tests -v
+```

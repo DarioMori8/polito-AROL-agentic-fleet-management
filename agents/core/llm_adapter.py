@@ -13,6 +13,7 @@ class ToolCall(BaseModel):
 
 class LLMResponse(BaseModel):
     content: str | None = None
+    thinking: str | None = None
     tool_calls: list[ToolCall] = []
 
 
@@ -32,7 +33,10 @@ class OllamaAdapter(LLMAdapter):
     async def complete(
         self, messages: list[dict], tools: list[dict] | None = None
     ) -> LLMResponse:
-        payload = {"model": self.model, "messages": messages, "stream": False}
+        payload = {
+            "model": self.model, "messages": messages, "stream": False,
+            "options": {"num_ctx": settings.OLLAMA_NUM_CTX},
+        }
         if tools:
             payload["tools"] = tools
 
@@ -45,7 +49,10 @@ class OllamaAdapter(LLMAdapter):
             ToolCall(name=tc["function"]["name"], arguments=tc["function"]["arguments"])
             for tc in message.get("tool_calls", [])
         ]
-        return LLMResponse(content=message.get("content"), tool_calls=tool_calls)
+        return LLMResponse(
+            content=message.get("content"), thinking=message.get("thinking"),
+            tool_calls=tool_calls,
+        )
 
 
 def get_llm_adapter() -> LLMAdapter:

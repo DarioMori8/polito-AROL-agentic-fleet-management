@@ -1,4 +1,5 @@
 import os
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
@@ -7,6 +8,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     AGENTS_SERVICE_URL: str = "http://localhost:8001"
+    # An agent may need several local LLM calls before returning a response.
+    AGENTS_REQUEST_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
 
 
     # nuove, per l'orchestrator
@@ -14,7 +17,7 @@ class Settings(BaseSettings):
     ORCHESTRATOR_OLLAMA_BASE_URL: str = "http://localhost:11434"
     ORCHESTRATOR_OLLAMA_MODEL: str
     ORCHESTRATOR_MAX_ITERATIONS: int = 5
-    ORCHESTRATOR_NUM_CTX: int = 4096
+    ORCHESTRATOR_NUM_CTX: int = 16384
 
 
     LANGFUSE_PUBLIC_KEY: str

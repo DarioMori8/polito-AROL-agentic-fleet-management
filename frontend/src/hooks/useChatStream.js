@@ -173,7 +173,7 @@ export default function useChatStream() {
             let accumulatedText = '';
             let citations = [];
             let currentSessionId = sessionId;
-            let confidence = 1.0;
+            let confidence = null;
             let needsEscalation = false;
 
             // Read stream chunks continuously
@@ -208,79 +208,93 @@ export default function useChatStream() {
 
                     if (!dataPayload) continue;
 
+                    let parsedData;
                     try {
-                        const parsedData = JSON.parse(dataPayload);
+                        parsedData = JSON.parse(dataPayload);
+                    } catch (jsonErr) {
+                        console.warn('Unable to parse SSE frame data payload:', dataPayload, jsonErr);
+                        continue;
+                    }
 
-                        // Handle event types matching our FastAPI LangGraph orchestrator contract
-                        switch (eventType) {
-                            case 'start':
-                                // Backend sends session_id from the very first event
-                                if (parsedData.session_id) {
-                                    currentSessionId = parsedData.session_id;
-                                    if (onSessionCreated) onSessionCreated(currentSessionId);
-                                }
-                                break;
+                    // Handle event types matching our FastAPI LangGraph orchestrator contract
+                    switch (eventType) {
+                        case 'start':
+                            // Backend sends session_id from the very first event
+                            if (parsedData.session_id) {
+                                currentSessionId = parsedData.session_id;
+                                if (onSessionCreated) onSessionCreated(currentSessionId);
+                            }
+                            break;
 
-                            case 'thinking':
-                                // LLM internal reasoning chunks — forwarded to optional UI collapsible panel
-                                if (onThinking && parsedData.text) {
-                                    onThinking(parsedData.text);
-                                }
-                                break;
+                        case 'thinking':
+                            // LLM internal reasoning chunks — forwarded to optional UI collapsible panel
+                            if (onThinking && parsedData.text) {
+                                onThinking(parsedData.text);
+                            }
+                            break;
 
-                            case 'token':
-                                // Incrementally streaming single words or characters
-                                const textChunk = parsedData.text || '';
-                                if (textChunk) {
-                                    accumulatedText += textChunk;
-                                    if (onToken) onToken(textChunk);
-                                }
-                                break;
+                        case 'token':
+                            // Incrementally streaming single words or characters
+                            const textChunk = parsedData.text || '';
+                            if (textChunk) {
+                                accumulatedText += textChunk;
+                                if (onToken) onToken(textChunk);
+                            }
+                            break;
 
-                            case 'status':
-                                // Tool invocation announced by the backend (e.g. "Consulting manuals_agent...")
-                                // Can be forwarded to a loading indicator if needed
-                                break;
+                        case 'status':
+                            // Tool invocation announced by the backend (e.g. "Consulting manuals_agent...")
+                            // Can be forwarded to a loading indicator if needed
+                            break;
 
-                            case 'citations':
-                                // parsedData is {type, citations: [...]} — NOT the array itself
-                                if (Array.isArray(parsedData.citations)) {
-                                    citations = parsedData.citations.map((cit, idx) => ({
+                        case 'sources':
+                            if (Array.isArray(parsedData.sources)) {
+                                citations = parsedData.sources
+                                    .filter((source) => source.kind === 'manual')
+                                    .map((cit, idx) => ({
                                         id: cit.id || `${cit.doc}-${cit.page}-${idx}`,
-                                        docName: cit.doc || 'Documento', // Maps "doc" from backend to "docName" in frontend
+                                        docName: cit.doc || 'Documento',
                                         page: cit.page || 1,
                                         snippet: cit.snippet || ''
                                     }));
-                                }
-                                break;
+                            }
+                            break;
 
-                            case 'done':
-                                // Final event — capture session_id for the next turn
-                                if (parsedData.session_id) {
-                                    currentSessionId = parsedData.session_id;
-                                    if (onSessionCreated) onSessionCreated(currentSessionId);
-                                }
-                                break;
+                        case 'citations':
+                            // parsedData is {type, citations: [...]} — NOT the array itself
+                            if (Array.isArray(parsedData.citations)) {
+                                citations = parsedData.citations.map((cit, idx) => ({
+                                    id: cit.id || `${cit.doc}-${cit.page}-${idx}`,
+                                    docName: cit.doc || 'Documento', // Maps "doc" from backend to "docName" in frontend
+                                    page: cit.page || 1,
+                                    snippet: cit.snippet || ''
+                                }));
+                            }
+                            break;
 
-                            case 'error':
-                                if (!parsedData.recoverable) {
-                                    throw new Error(parsedData.message || 'An error occurred during LLM graph execution.');
-                                }
-                                // Recoverable tool errors are logged but don't abort the stream
-                                console.warn('Recoverable agent error:', parsedData.message);
-                                break;
+                        case 'done':
+                            // Final event — capture session_id for the next turn
+                            if (parsedData.session_id) {
+                                currentSessionId = parsedData.session_id;
+                                if (onSessionCreated) onSessionCreated(currentSessionId);
+                            }
+                            break;
 
-                            default:
-                                // Fallback parsing for unstructured data
-                                if (parsedData.answer) {
-                                    accumulatedText = parsedData.answer;
-                                    if (onToken) onToken(parsedData.answer);
-                                }
-                                break;
-                        }
-                    } catch (jsonErr) {
-                        // Logging parser faults on malformed SSE frames
-                        console.warn('Unable to parse SSE frame data payload:', dataPayload, jsonErr);
+                        case 'error':
+                            if (!parsedData.recoverable) {
+                                throw new Error(parsedData.message || 'An error occurred during LLM graph execution.');
+                            }
+                            // Recoverable tool errors are logged but don't abort the stream
+                            console.warn('Recoverable agent error:', parsedData.message);
+                            break;
+
+                        default:
+                            // Fallback parsing for unstructured data
+                            if (parsedData.answer) {
+                                accumulatedText = parsedData.answer;
+                                if (onToken) onToken(parsedData.answer);
+                            }
+                            break;
                     }
                 }
             }
@@ -289,7 +303,7 @@ export default function useChatStream() {
             const finalMessage = {
                 id: messageId || `ai-${Date.now()}`,
                 sender: 'assistant',
-                text: accumulatedText || 'Query processed successfully.',
+                text: accumulatedText || 'Non è stata generata una risposta. Riprova la richiesta.',
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 status: 'sent',
                 citations: citations,

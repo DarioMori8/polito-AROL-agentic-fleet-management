@@ -43,7 +43,7 @@ export default function WorkspaceWrapper() {
                 text: msg.content,
                 timestamp: '', 
                 status: 'sent',
-                citations: (msg.sources || []).map((cit, citIdx) => ({
+                citations: (msg.sources || []).filter((source) => source.kind === 'manual').map((cit, citIdx) => ({
                     id: cit.id || `${cit.doc}-${cit.page}-${citIdx}`,
                     docName: cit.doc || 'Documento',
                     page: cit.page || 1,

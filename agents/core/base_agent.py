@@ -1,3 +1,4 @@
+import json
 from abc import ABC, abstractmethod
 
 from core.config import settings
@@ -38,12 +39,32 @@ class BaseAgent(ABC):
             if not response.tool_calls:
                 return self._build_response(response, tool_results)
 
-            messages.append({"role": "assistant", "content": response.content or ""})
+            messages.append({
+                "role": "assistant",
+                "content": response.content or "",
+                "thinking": response.thinking or "",
+                "tool_calls": [
+                    {"type": "function", "function": call.model_dump()}
+                    for call in response.tool_calls
+                ],
+            })
             for call in response.tool_calls:
                 result = await self._execute_tool(call)
                 tool_results.append(result)
                 messages.append(
-                    {"role": "tool", "name": call.name, "content": str(result)}
+                    {"role": "tool", "tool_name": call.name,
+                     "content": json.dumps(result, ensure_ascii=False)}
                 )
 
-        return self._build_response(LLMResponse(content=""), tool_results)
+        # Reserve a final synthesis after the tool budget, instead of reporting
+        # success with an empty answer and a list of retrieved passages.
+        messages.append({
+            "role": "user",
+            "content": (
+                "Answer the original question now using only the tool results. "
+                "Do not request more tools. If they do not answer the question, "
+                "explain what is missing. Original question: " + self._user_message(task)
+            ),
+        })
+        final = await self.llm.complete(messages, None)
+        return self._build_response(final, tool_results)

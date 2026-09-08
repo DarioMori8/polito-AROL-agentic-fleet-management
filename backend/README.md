@@ -190,10 +190,12 @@ orchestrator from networking details entirely: if the transport layer
 changes later (e.g. moving to MCP), only the client implementation
 needs to change.
 
-`manuals_client.py` also applies automatic retry (via `tenacity`) on
-transient network errors (timeout, connection refused), but not on
-HTTP error status codes, since those usually indicate a logic error
-rather than a temporary glitch.
+The shared HTTP client retries connection errors and connection timeouts
+up to three times. It does not retry response timeouts, which could enqueue
+duplicate inference while the original request is still running, or HTTP
+error status codes. Connections time out after 5 seconds; the response timeout
+is configurable with `AGENTS_REQUEST_TIMEOUT_SECONDS` (240 seconds by default)
+to allow multiple local LLM calls per agent request.
 
 ### `app/db/`
 - **`engine.py`** — the async engine (`sqlite+aiosqlite`), the session
@@ -559,7 +561,7 @@ source venv/bin/activate        # Linux
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env if needed, in particular MANUALS_AGENT_URL, ORCHESTRATOR_OLLAMA_MODEL,
+# edit .env if needed, in particular AGENTS_SERVICE_URL, ORCHESTRATOR_OLLAMA_MODEL,
 # ORCHESTRATOR_NUM_CTX, and the LANGFUSE_* credentials
 ```
 
@@ -647,11 +649,12 @@ debug print inside `handle()` / `handle_stream()` still works.
 
 | Variable                       | Description                                            | Example                  |
 |---------------------------------|-----------------------------------------------------------|---------------------------|
-| `MANUALS_AGENT_URL`             | Base URL of the Manuals Agent service                     | `http://localhost:8001`  |
+| `AGENTS_SERVICE_URL`           | Base URL of the shared agents service (Manuals, Docs, IoT) | `http://localhost:8001`  |
+| `AGENTS_REQUEST_TIMEOUT_SECONDS` | Response timeout for agent requests, in seconds          | `240`                    |
 | `ORCHESTRATOR_LLM_PROVIDER`     | LLM provider used by the orchestrator                     | `ollama`                  |
 | `ORCHESTRATOR_OLLAMA_BASE_URL`  | Base URL of the Ollama server for the orchestrator        | `http://localhost:11434` |
 | `ORCHESTRATOR_OLLAMA_MODEL`     | Model used for routing/tool-calling (must support it)     | `gpt-oss:20b`             |
-| `ORCHESTRATOR_NUM_CTX`          | Context window fixed explicitly (see `config.py` notes)   | `4096`                    |
+| `ORCHESTRATOR_NUM_CTX`          | Context window fixed explicitly (see `config.py` notes)   | `16384`                   |
 | `ORCHESTRATOR_MAX_ITERATIONS`   | Max reason/act/observe cycles before giving up             | `5`                       |
 | `LANGFUSE_PUBLIC_KEY`           | Langfuse public key (bridged into `os.environ`)           | `pk-lf-...`               |
 | `LANGFUSE_SECRET_KEY`           | Langfuse secret key (bridged into `os.environ`)           | `sk-lf-...`               |

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str
+    OLLAMA_NUM_CTX: int = 16384
     EMBEDDING_MODEL: str = "nomic-embed-text"
 
     # Other examples:

@@ -14,7 +14,7 @@ import '@/styles/ChatBubble.css';
  */
 export default function ChatBubble({ message, onCitationClick, onRetry }) {
     // Structure of the message object
-    const { sender, text, timestamp, status, citations, metadata, thinkingText } = {
+    const { sender, text, timestamp, status, citations, thinkingText } = {
         ...DEFAULT_CHAT_MESSAGE,
         ...message,
     };
@@ -85,9 +85,9 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
                     <div className="bubble-footer">
                         <span>{timestamp}</span>
                         {isUser && status === 'sent' && <Check size={12} style={{ color: 'rgba(255, 255, 255, 0.9)' }} />}
-                        {!isUser && metadata?.confidence && (
+                        {!isUser && citations?.length > 0 && (
                             <span className="confidence-badge">
-                                Verified ({Math.round(metadata.confidence * 100)}%)
+                                Fonti disponibili
                             </span>
                         )}
                     </div>

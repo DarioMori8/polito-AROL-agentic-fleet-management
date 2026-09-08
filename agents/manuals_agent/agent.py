@@ -20,7 +20,12 @@ class ManualsAgent(BaseAgent):
         return await super().run(task)
 
     def _user_message(self, task: SearchManualTask) -> str:
-        return task.query
+        languages = get_vector_store().get_languages({"machine_id": task.machine_id})
+        return (
+            f"Manual languages available: {', '.join(languages) or 'unknown'}. "
+            "Search using the manual language, and answer in the language of the question.\n"
+            f"Question: {task.query}"
+        )
 
     async def _execute_tool(self, tool_call: ToolCall) -> dict:
         if tool_call.name != "search_manual":
@@ -35,13 +40,22 @@ class ManualsAgent(BaseAgent):
         return {"results": results}
 
     def _build_response(self, final: LLMResponse, tool_results: list[dict]) -> SearchManualResponse:
-        citations = [
-            Citation(doc=chunk["doc"], page=chunk["page"], snippet=chunk["text"][:300])
-            for result in tool_results
-            for chunk in result.get("results", [])
-        ]
+        answer = (final.content or "").strip()
+        if not answer:
+            return SearchManualResponse(
+                answer="Non è stato possibile formulare una risposta dai passaggi recuperati del manuale. Riprova specificando l'intervento o il componente.",
+                citations=[], confidence=0.0,
+            )
+        citations = []
+        seen = set()
+        for result in tool_results:
+            for chunk in result.get("results", []):
+                key = (chunk["doc"], chunk["page"], chunk["text"][:300])
+                if key not in seen:
+                    seen.add(key)
+                    citations.append(Citation(doc=key[0], page=key[1], snippet=key[2]))
         return SearchManualResponse(
-            answer=final.content or "",
+            answer=answer,
             citations=citations,
             confidence=1.0 if citations else 0.0,
         )
