@@ -7,11 +7,14 @@
    ROOT CONTAINER
    ========================================================================== */
 
-/* AI Citation highlight — applied via customTextRenderer in DocumentArea */
+/* AI Citation / search highlight — applied via customTextRenderer in DocumentArea.
+   IMPORTANT: color must be transparent so the mark acts as a pure background
+   overlay on top of the canvas-rendered text. Setting any visible color here
+   causes the HTML text layer to double-render on top of the canvas, creating
+   a "ghost text" / offset-duplicate artifact. */
 mark.pdf-highlight {
-  background-color: rgba(240, 185, 11, 0.40);
-  /* ambra AROL, semitrasparente */
-  color: var(--arol-dark);
+  background-color: rgba(240, 185, 11, 0.45);   /* amber AROL, semitransparent */
+  color: transparent;                              /* hide text layer — canvas renders it */
   border-radius: 2px;
   border-bottom: 2px solid rgba(240, 185, 11, 0.85);
   padding: 0 1px;
@@ -20,11 +23,11 @@ mark.pdf-highlight {
 
 @keyframes pdf-highlight-fade-in {
   from {
-    background-color: rgba(240, 185, 11, 0.70);
+    background-color: rgba(240, 185, 11, 0.75);
   }
 
   to {
-    background-color: rgba(240, 185, 11, 0.40);
+    background-color: rgba(240, 185, 11, 0.45);
   }
 }
 
