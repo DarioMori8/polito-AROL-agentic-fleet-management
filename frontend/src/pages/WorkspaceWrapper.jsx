@@ -5,7 +5,7 @@ import useChatApi from '../hooks/useChatApi';
 import { useMachine, isMatchingId } from '../context/MachineContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useParams } from 'react-router';
-import { LogIn, Lock } from 'lucide-react';
+import { LogIn, Lock, ShieldAlert } from 'lucide-react';
 
 /**
  * WorkspaceWrapper Component
@@ -15,7 +15,7 @@ export default function WorkspaceWrapper() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { activeMachine, scanMachine } = useMachine();
-    const { isAuthenticated, login } = useAuth();
+    const { isAuthenticated, login, user } = useAuth();
 
     // Inline login gate state (shown in workspace when not authenticated)
     const [loginEmail, setLoginEmail] = useState('');
@@ -315,7 +315,49 @@ export default function WorkspaceWrapper() {
         );
     }
 
-    // ── AUTHENTICATED: full chat workspace ──────────────────────────────────────
+    // ── COMPANY GUARD: authenticated but wrong company ──────────────────────────
+    // The machine is always loaded (semi-public route), but the chat is only
+    // available to users whose company_id matches the machine's company_id.
+    const machineLoaded = activeMachine && activeMachine.id?.toString() === id?.toString();
+    const companyMismatch = machineLoaded && user?.company_id && activeMachine.company_id
+        && activeMachine.company_id !== user.company_id;
+
+    if (companyMismatch) {
+        return (
+            <ChatWorkspace
+                messages={[]}
+                isLoading={false}
+                onSendMessage={() => {}}
+                onSuggestionClick={() => {}}
+                onBackClick={handleBackToFleet}
+                onMenuToggle={() => setIsDrawerOpen(true)}
+                isDrawerOpen={isDrawerOpen}
+                onCloseDrawer={() => setIsDrawerOpen(false)}
+                sessionsList={[]}
+                currentSessionId={null}
+                onSelectSession={() => {}}
+                onNewChat={() => {}}
+                loginGate={
+                    <div className="chat-login-gate">
+                        <div className="chat-login-gate-icon" style={{ backgroundColor: 'var(--arol-red-light)', color: 'var(--arol-red)' }}>
+                            <ShieldAlert size={28} />
+                        </div>
+                        <h3 className="chat-login-gate-title" style={{ color: 'var(--arol-red)' }}>
+                            Accesso negato
+                        </h3>
+                        <p className="chat-login-gate-sub">
+                            Questo macchinario appartiene a un'altra azienda. Il tuo account <strong>{user?.company_name || user?.company_id}</strong> non ha accesso alla chat AI per questo dispositivo.
+                        </p>
+                        <p className="chat-login-gate-sub" style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                            Il manuale PDF è comunque consultabile nel pannello a destra.
+                        </p>
+                    </div>
+                }
+            />
+        );
+    }
+
+    // ── AUTHENTICATED + AUTHORIZED: full chat workspace ─────────────────────────
     return (
         <ChatWorkspace
             messages={messages}
