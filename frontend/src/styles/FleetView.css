@@ -50,12 +50,34 @@
   margin: 2px 0 0 0;
 }
 
+/* Header actions row (sync + user pill + logout) */
+.fleet-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+/* User session pill */
+.fleet-user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background-color: var(--arol-sky-light);
+  color: var(--arol-blue);
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
 /* Sync / Refresh button */
 .sync-fleet-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 12px;
   padding: 7px 14px;
   background-color: var(--arol-blue);
   color: var(--white);
@@ -75,6 +97,33 @@
 }
 
 .sync-fleet-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Logout button */
+.logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background-color: transparent;
+  color: var(--arol-red);
+  border: 1.5px solid var(--arol-red);
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.logout-btn:hover {
+  background-color: var(--arol-red-light);
+}
+
+.logout-btn:active {
   transform: scale(0.96);
 }
 

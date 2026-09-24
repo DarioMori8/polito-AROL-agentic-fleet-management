@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { MOCK_FLEET } from '../assets/mocks/MOCK_FLEET';
 import { MOCK_MANUALS } from '../assets/mocks/MOCK_MANUALS';
+import { useAuth } from './AuthContext';
 
 export const MachineContext = createContext(null);
 
@@ -45,6 +46,9 @@ export function MachineProvider({ children }) {
     const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000';
     const USE_MOCK = import.meta.env?.VITE_USE_MOCK === 'true';
 
+    // Auth context — may be null if not authenticated (semi-public routes)
+    const { user } = useAuth();
+
     // Load cached assets on mount to support instant app loading under flaky Wi-Fi
     useEffect(() => {
         try {
@@ -78,20 +82,31 @@ export function MachineProvider({ children }) {
         if (USE_MOCK) {
             // Simulate minor network delay for realistic loader rendering
             await new Promise(resolve => setTimeout(resolve, 600));
-            setFleet(MOCK_FLEET);
+            // Filter fleet to only show machines belonging to the logged-in company
+            const companyFleet = user?.company_id
+                ? MOCK_FLEET.filter(m => m.company_id === user.company_id)
+                : MOCK_FLEET;
+            setFleet(companyFleet);
             setLoading(false);
             return;
         }
 
         // REAL WORLD MODE
         try {
-            const response = await fetch(`${API_BASE_URL}/v1/machines`);
+            const headers = { 'Content-Type': 'application/json' };
+            if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+            const response = await fetch(`${API_BASE_URL}/v1/machines`, { headers });
             if (!response.ok) {
                 throw new Error(`HTTP Error: ${response.status}`);
             }
             const data = await response.json();
-            setFleet(data);
-            sessionStorage.setItem('arol_cached_fleet', JSON.stringify(data));
+            // Backend will filter by company once auth is implemented;
+            // as a defense-in-depth we also filter on the frontend.
+            const companyFleet = user?.company_id
+                ? data.filter(m => m.company_id === user.company_id)
+                : data;
+            setFleet(companyFleet);
+            sessionStorage.setItem('arol_cached_fleet', JSON.stringify(companyFleet));
         } catch (err) {
             console.error('AROL Fleet Fetch Error:', err);
             const cachedFleet = sessionStorage.getItem('arol_cached_fleet');
@@ -104,7 +119,7 @@ export function MachineProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, [API_BASE_URL, USE_MOCK]);
+    }, [API_BASE_URL, USE_MOCK, user]);
 
     /**
      * Resolves a machine ID after a QR Scan.

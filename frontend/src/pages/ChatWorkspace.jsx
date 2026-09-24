@@ -25,7 +25,8 @@ export default function ChatWorkspace({
     sessionsList,
     currentSessionId,
     onSelectSession,
-    onNewChat
+    onNewChat,
+    loginGate = null   // Optional: render instead of chat when user is not authenticated
 }) {
     const navigate = useNavigate()
 
@@ -94,18 +95,22 @@ export default function ChatWorkspace({
                 ========================================== */}
             {isTabletLayout ? (
                 <div className="split-layout-wrapper">
-                    {/* Left Column: Fixed Conversational Stream */}
+                    {/* Left Column: Chat or Login Gate */}
                     <aside className="split-column split-left">
-                        <ChatWindow
-                            messages={messages}
-                            activeMachine={activeMachine}
-                            isLoading={isLoading}
-                            onSendMessage={onSendMessage}
-                            onSuggestionClick={onSuggestionClick}
-                            onBackClick={onBackClick}
-                            onCitationClick={handleCitationClick}
-                            onMenuToggle={onMenuToggle}
-                        />
+                        {loginGate ? (
+                            <div className="chat-login-gate-wrapper">{loginGate}</div>
+                        ) : (
+                            <ChatWindow
+                                messages={messages}
+                                activeMachine={activeMachine}
+                                isLoading={isLoading}
+                                onSendMessage={onSendMessage}
+                                onSuggestionClick={onSuggestionClick}
+                                onBackClick={onBackClick}
+                                onCitationClick={handleCitationClick}
+                                onMenuToggle={onMenuToggle}
+                            />
+                        )}
                     </aside>
 
                     {/* Right Column: Contextual Pane (Manual PDF) */}
@@ -142,16 +147,20 @@ export default function ChatWorkspace({
                     {/* Main Display Area */}
                     <main className="mobile-view-viewport">
                         {activeTab === 'chat' && (
-                            <ChatWindow
-                                messages={messages}
-                                activeMachine={activeMachine}
-                                isLoading={isLoading}
-                                onSendMessage={onSendMessage}
-                                onSuggestionClick={onSuggestionClick}
-                                onBackClick={onBackClick}
-                                onCitationClick={handleCitationClick}
-                                onMenuToggle={onMenuToggle}
-                            />
+                            loginGate ? (
+                                <div className="chat-login-gate-wrapper">{loginGate}</div>
+                            ) : (
+                                <ChatWindow
+                                    messages={messages}
+                                    activeMachine={activeMachine}
+                                    isLoading={isLoading}
+                                    onSendMessage={onSendMessage}
+                                    onSuggestionClick={onSuggestionClick}
+                                    onBackClick={onBackClick}
+                                    onCitationClick={handleCitationClick}
+                                    onMenuToggle={onMenuToggle}
+                                />
+                            )
                         )}
 
                         {activeTab === 'manuals' && (

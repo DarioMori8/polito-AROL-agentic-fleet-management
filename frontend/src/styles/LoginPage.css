@@ -1,0 +1,284 @@
+/* ==========================================================================
+   DESIGN SYSTEM INDUSTRIAL UI — LOGIN PAGE
+   Inherits design tokens from tokens.css and base.css
+   ========================================================================== */
+
+.login-layout {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--arol-blue);
+    font-family: var(--font-primary);
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+/* Mesh grid overlay — reused from LandingQR design language */
+.login-layout .industrial-mesh-overlay {
+    position: absolute;
+    inset: 0;
+    opacity: 0.08;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+    background-size: 20px 20px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* ── CARD ──────────────────────────────────────────────────────────────── */
+.login-card {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 420px;
+    background-color: var(--white);
+    border-radius: 24px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    padding: 28px 24px;
+    box-sizing: border-box;
+    animation: card-rise 0.35s ease-out;
+}
+
+@keyframes card-rise {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── HEADER ────────────────────────────────────────────────────────────── */
+.login-logo-header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--slate-200);
+}
+
+.login-logo-header .brand-badge {
+    display: inline-block;
+    background-color: var(--arol-blue);
+    color: var(--white);
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    padding: 5px 14px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.login-platform-title {
+    color: var(--arol-dark);
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin: 0 0 4px 0;
+    letter-spacing: -0.2px;
+}
+
+.login-platform-sub {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+
+/* ── MAIN CONTENT ──────────────────────────────────────────────────────── */
+.login-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-grow: 1;
+}
+
+.login-icon-ring {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background-color: var(--arol-sky-light);
+    color: var(--arol-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.login-headline {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--arol-blue);
+    margin: 0 0 8px 0;
+}
+
+.login-subtext {
+    font-size: 0.875rem;
+    color: #5a6a85;
+    text-align: center;
+    line-height: 1.5;
+    margin: 0 0 20px 0;
+}
+
+/* ── ERROR BANNER ──────────────────────────────────────────────────────── */
+.login-error-banner {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--arol-red-light);
+    border-left: 4px solid var(--arol-red);
+    color: var(--arol-red);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+    animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── FORM ──────────────────────────────────────────────────────────────── */
+.login-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.login-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.login-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--arol-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.login-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.login-input-icon {
+    position: absolute;
+    left: 14px;
+    color: #94a3b8;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+.login-input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 14px 0 42px;
+    border: 2px solid var(--slate-300);
+    border-radius: var(--radius-lg);
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--arol-dark);
+    background-color: var(--white);
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    font-family: var(--font-primary);
+}
+
+.login-input:focus {
+    border-color: var(--arol-sky);
+    box-shadow: 0 0 0 3px rgba(64, 123, 158, 0.2);
+}
+
+.login-input:disabled {
+    background-color: var(--arol-gray-light);
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+
+/* ── SUBMIT BUTTON ─────────────────────────────────────────────────────── */
+.login-submit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 52px;
+    margin-top: 4px;
+    background-color: var(--arol-blue);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-lg);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    font-family: var(--font-primary);
+}
+
+.login-submit-btn:hover:not(:disabled) {
+    background-color: var(--arol-sky);
+    box-shadow: 0 4px 16px rgba(0, 45, 84, 0.3);
+}
+
+.login-submit-btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.login-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Inline spinner inside submit button */
+.login-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: var(--white);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── FOOTER ────────────────────────────────────────────────────────────── */
+.login-footer {
+    border-top: 1px solid var(--slate-200);
+    padding-top: 14px;
+    margin-top: 24px;
+    text-align: center;
+}
+
+.login-footer p {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin: 0 0 4px 0;
+    font-weight: 600;
+}
+
+.login-footer-tag {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--arol-sky);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}

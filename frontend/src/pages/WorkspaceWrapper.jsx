@@ -3,7 +3,9 @@ import ChatWorkspace from './ChatWorkspace';
 import useChatStream from '../hooks/useChatStream';
 import useChatApi from '../hooks/useChatApi';
 import { useMachine, isMatchingId } from '../context/MachineContext';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate, useParams } from 'react-router';
+import { LogIn, Lock } from 'lucide-react';
 
 /**
  * WorkspaceWrapper Component
@@ -13,6 +15,13 @@ export default function WorkspaceWrapper() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { activeMachine, scanMachine } = useMachine();
+    const { isAuthenticated, login } = useAuth();
+
+    // Inline login gate state (shown in workspace when not authenticated)
+    const [loginEmail, setLoginEmail] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [loginLoading, setLoginLoading] = useState(false);
+    const [loginError, setLoginError] = useState('');
 
     const [messages, setMessages] = useState([]);
     const [isAiLoading, setIsAiLoading] = useState(false);
@@ -234,6 +243,79 @@ export default function WorkspaceWrapper() {
         await loadSessionHistory(sessionId);
     };
 
+    const handleInlineLogin = async (e) => {
+        e.preventDefault();
+        setLoginError('');
+        setLoginLoading(true);
+        const result = await login(loginEmail, loginPassword);
+        setLoginLoading(false);
+        if (!result.ok) setLoginError(result.message);
+        // On success, isAuthenticated becomes true and the chat unlocks automatically
+    };
+
+    // ── LOGIN GATE: shown when user is not authenticated ────────────────────────
+    if (!isAuthenticated) {
+        return (
+            <ChatWorkspace
+                messages={messages}
+                isLoading={false}
+                onSendMessage={() => {}}
+                onSuggestionClick={() => {}}
+                onBackClick={handleBackToFleet}
+                onMenuToggle={() => setIsDrawerOpen(true)}
+                isDrawerOpen={isDrawerOpen}
+                onCloseDrawer={() => setIsDrawerOpen(false)}
+                sessionsList={[]}
+                currentSessionId={null}
+                onSelectSession={() => {}}
+                onNewChat={() => {}}
+                loginGate={
+                    <div className="chat-login-gate">
+                        <div className="chat-login-gate-icon">
+                            <Lock size={28} />
+                        </div>
+                        <h3 className="chat-login-gate-title">Accesso richiesto</h3>
+                        <p className="chat-login-gate-sub">
+                            Accedi con le tue credenziali aziendali per usare il supporto AI
+                        </p>
+                        {loginError && (
+                            <div className="chat-login-gate-error">{loginError}</div>
+                        )}
+                        <form className="chat-login-gate-form" onSubmit={handleInlineLogin}>
+                            <input
+                                type="email"
+                                placeholder="Email aziendale"
+                                value={loginEmail}
+                                onChange={e => setLoginEmail(e.target.value)}
+                                className="chat-login-gate-input"
+                                required
+                                disabled={loginLoading}
+                            />
+                            <input
+                                type="password"
+                                placeholder="Password"
+                                value={loginPassword}
+                                onChange={e => setLoginPassword(e.target.value)}
+                                className="chat-login-gate-input"
+                                required
+                                disabled={loginLoading}
+                            />
+                            <button
+                                type="submit"
+                                className="chat-login-gate-btn"
+                                disabled={loginLoading || !loginEmail || !loginPassword}
+                            >
+                                <LogIn size={15} />
+                                {loginLoading ? 'Verifica...' : 'Accedi e Chatta'}
+                            </button>
+                        </form>
+                    </div>
+                }
+            />
+        );
+    }
+
+    // ── AUTHENTICATED: full chat workspace ──────────────────────────────────────
     return (
         <ChatWorkspace
             messages={messages}
@@ -250,4 +332,4 @@ export default function WorkspaceWrapper() {
             onNewChat={handleNewChat}
         />
     );
-}
+}

@@ -137,11 +137,19 @@ export default function useChatStream() {
 
         // Real backend streaming
         try {
+            // Read JWT token from session (if authenticated)
+            let authHeader = {};
+            try {
+                const session = JSON.parse(sessionStorage.getItem('arol_auth_session') || 'null');
+                if (session?.token) authHeader = { 'Authorization': `Bearer ${session.token}` };
+            } catch { /* session parse failure is non-fatal */ }
+
             const response = await fetch(`${API_BASE_URL}/v1/chat/stream`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'text/event-stream',
+                    ...authHeader
                 },
                 signal: abortController.signal,
                 body: JSON.stringify({
@@ -150,6 +158,7 @@ export default function useChatStream() {
                     session_id: sessionId
                 }),
             });
+
 
             if (!response.ok) {
                 let errorDetails = `Status code: ${response.status}`;

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Cpu, ShieldAlert, CheckCircle2, Search, RefreshCw, AlertTriangle, LogOut, User } from 'lucide-react';
 import { useMachine } from '../context/MachineContext';
+import { useAuth } from '../context/AuthContext';
 import '../styles/FleetView.css';
 
 /**
@@ -12,8 +13,14 @@ import '../styles/FleetView.css';
 export default function FleetView() {
     const navigate = useNavigate();
     const { fleet, loading, error, fetchFleet } = useMachine();
+    const { user, logout } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
+
+    const handleLogout = () => {
+        logout();
+        navigate('/login', { replace: true });
+    };
 
     // Trigger fleet load from server on mount
     useEffect(() => {
@@ -42,13 +49,29 @@ export default function FleetView() {
             <header className="fleet-header">
                 <div className="fleet-brand">AROL Group</div>
                 <h1 className="fleet-title">Flotta Macchinari</h1>
-                <p className="fleet-subtitle">Digital Fleet Portal & Asset Control</p>
+                <p className="fleet-subtitle">Digital Fleet Portal &amp; Asset Control</p>
 
-                {/* Dynamic Sync Trigger (WCAG Touch target compliant) */}
-                <button className="sync-fleet-btn" onClick={fetchFleet} disabled={loading} style={{ touchAction: 'manipulation' }}>
-                    <RefreshCw size={14} className={loading ? 'spinning-icon' : ''} />
-                    <span>Sincronizza Rete</span>
-                </button>
+                <div className="fleet-header-actions">
+                    {/* User session pill */}
+                    {user && (
+                        <div className="fleet-user-pill">
+                            <User size={13} />
+                            <span>{user.first_name || user.email}</span>
+                        </div>
+                    )}
+
+                    {/* Dynamic Sync Trigger */}
+                    <button className="sync-fleet-btn" onClick={fetchFleet} disabled={loading} style={{ touchAction: 'manipulation' }}>
+                        <RefreshCw size={14} className={loading ? 'spinning-icon' : ''} />
+                        <span>Sincronizza</span>
+                    </button>
+
+                    {/* Logout */}
+                    <button className="logout-btn" onClick={handleLogout} style={{ touchAction: 'manipulation' }}>
+                        <LogOut size={14} />
+                        <span>Esci</span>
+                    </button>
+                </div>
             </header>
 
             <main className="fleet-main">

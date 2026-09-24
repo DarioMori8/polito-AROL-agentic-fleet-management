@@ -396,3 +396,141 @@
     line-height: 1.5;
     margin: 0 0 24px 0;
 }
+
+/* ==========================================================================
+   LOGIN GATE — shown in the chat column when user is not authenticated
+   ========================================================================== */
+
+.chat-login-gate-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--arol-gray-light);
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+.chat-login-gate {
+    width: 100%;
+    max-width: 360px;
+    background-color: var(--white);
+    border-radius: 20px;
+    padding: 28px 24px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    animation: gate-rise 0.3s ease-out;
+}
+
+@keyframes gate-rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.chat-login-gate-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background-color: var(--arol-sky-light);
+    color: var(--arol-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.chat-login-gate-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--arol-blue);
+    margin: 0 0 8px 0;
+}
+
+.chat-login-gate-sub {
+    font-size: 0.85rem;
+    color: #5a6a85;
+    line-height: 1.5;
+    margin: 0 0 20px 0;
+}
+
+.chat-login-gate-error {
+    width: 100%;
+    background-color: var(--arol-red-light);
+    border-left: 3px solid var(--arol-red);
+    color: var(--arol-red);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    text-align: left;
+    box-sizing: border-box;
+}
+
+.chat-login-gate-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.chat-login-gate-input {
+    width: 100%;
+    min-height: 46px;
+    padding: 0 14px;
+    border: 2px solid var(--slate-300);
+    border-radius: var(--radius-lg);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--arol-dark);
+    background-color: var(--white);
+    box-sizing: border-box;
+    outline: none;
+    font-family: var(--font-primary);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.chat-login-gate-input:focus {
+    border-color: var(--arol-sky);
+    box-shadow: 0 0 0 3px rgba(64, 123, 158, 0.2);
+}
+
+.chat-login-gate-input:disabled {
+    background-color: var(--arol-gray-light);
+    color: #94a3b8;
+}
+
+.chat-login-gate-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    min-height: 48px;
+    background-color: var(--arol-blue);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-lg);
+    font-size: 0.95rem;
+    font-weight: 800;
+    font-family: var(--font-primary);
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.1s;
+}
+
+.chat-login-gate-btn:hover:not(:disabled) {
+    background-color: var(--arol-sky);
+}
+
+.chat-login-gate-btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.chat-login-gate-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
