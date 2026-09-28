@@ -1,40 +1,45 @@
 # AROL Customer Platform — Backend & Orchestrator
 
-Backend service that exposes the chat API consumed by the frontend, and
-orchestrates calls to the specialized AI Agents (starting with the
-Manuals Agent) through an LLM-based orchestrator built on **LangGraph**.
+Backend service that exposes the API consumed by the frontend: session-based
+authentication, the chat API, and read-only resources (machines and manuals).
+Chat requests are handled by an LLM-based orchestrator built on **LangGraph**,
+which routes each question to the specialized AI Agents (Manuals, Docs, IoT).
 
-This is **iteration 3**: the orchestrator's reason -> act -> observe
-loop, previously implemented as a hand-written `for` loop (iteration 2),
-is now expressed as a compiled **LangGraph** `StateGraph`. The routing
-decision itself is unchanged (an LLM reading tool descriptions decides
-which agent(s) to call) — what changes is the engine that drives the
-loop, in exchange for built-in tool execution (`ToolNode`), a
-ready-made conditional-routing helper (`tools_condition`), and a
-foundation for checkpointing. On top of this iteration, three
-capabilities are now wired in: **Langfuse tracing** (via a module-level
-`CallbackHandler` passed to the graph), **token-by-token streaming** of
-the answer over Server-Sent Events (see the API section), and **durable
-checkpointing** — the graph is compiled with an `AsyncSqliteSaver` so
-that turns sharing a `session_id` accumulate into one conversation, and
-that conversation survives a process restart because the state is written
-to a SQLite file on disk rather than kept in RAM. A **conversation
-history endpoint** then reads any past conversation back from that
-durable store for re-display.
+The orchestrator's reason -> act -> observe loop is a compiled **LangGraph**
+`StateGraph`: an LLM reading tool descriptions decides which agent(s) to call,
+`ToolNode` executes the calls (in parallel when there are several), and
+`tools_condition` loops back to the model until it answers in plain text.
+On top of the loop:
 
-Alongside the chat path, the backend owns a **domain database** holding
-the customer fleet — companies, users, machine models, machines and their
-manuals — modelled directly on the AROL Q2 synthetic dataset, and serves
-it through read-only resource endpoints (see *Domain database* and *API*).
+- **Langfuse tracing** — a module-level `CallbackHandler` passed to the graph;
+  traces are grouped by user and by conversation.
+- **Token-by-token streaming** of the answer over Server-Sent Events.
+- **Durable checkpointing** — the graph is compiled with an `AsyncSqliteSaver`,
+  so turns sharing a `thread_id` accumulate into one conversation that
+  survives a process restart. A **history endpoint** reads it back.
+- **Session-based authentication** — an opaque token in an `HttpOnly` cookie,
+  resolved server-side on every request.
+- **Multi-tenancy** — every read is scoped to the authenticated user's
+  company; every conversation is owned by one user and pinned to one machine.
+
+Alongside the chat path, the backend owns a **domain database** holding the
+customer fleet — companies, users, machine models, machines, their manuals —
+plus the authentication sessions and the ownership record of each
+conversation. It is modelled directly on the AROL Q2 synthetic dataset.
 
 ```
-Frontend (simulated via Swagger UI / curl -N)
-    → Backend API (/v1/chat  or  /v1/chat/stream)
-    → Orchestrator (LangGraphOrchestrator)
-        → StateGraph: agent node (ChatOllama + bound tools)
-            --(tool_calls?)--> tools node (ToolNode)
-                → ManualsClient → Manuals Agent (Ollama-based)
-            <-- loops back to agent node until plain-text response
+Frontend (browser, cookie-authenticated)
+    → Backend API
+        /v1/sessions            login / whoami / logout
+        /v1/machines, /v1/manuals   tenant-scoped resources
+        /v1/chat, /v1/chat/stream   → Orchestrator (LangGraphOrchestrator)
+            1. prepare_turn: machine ∈ user's company? thread owned by user?
+            2. StateGraph: agent node (ChatOllama + bound tools)
+                --(tool_calls?)--> tools node (ToolNode)
+                    → ManualsClient → Manuals Agent  (RAG on Chroma)
+                    → DocsClient    → Docs Agent     (quotes, orders)
+                    → IoTClient     → IoT Agent      (telemetry, alarms, tickets)
+                <-- loops back to agent node until plain-text response
 ```
 
 ## Project structure
@@ -42,34 +47,40 @@ Frontend (simulated via Swagger UI / curl -N)
 ```
 backend/
 ├── app/
-│   ├── main.py                    # FastAPI app entrypoint, mounts routers, configures logging
-│   ├── config.py                  # Settings loaded from .env (Pydantic Settings)
+│   ├── main.py                    # FastAPI app, lifespan, CORS, routers, logging
+│   ├── config.py                  # Settings (pydantic-settings) + Langfuse env bridge
 │   ├── api/
+│   │   ├── deps.py                # get_current_user / CurrentUser: the auth gate
 │   │   └── v1/
-│   │       └── chat.py            # POST /v1/chat, POST /v1/chat/stream, GET /v1/conversations/{id}/messages
+│   │       ├── auth.py            # POST/GET/DELETE /v1/sessions[/current]
+│   │       └── chat.py            # /v1/chat, /v1/chat/stream, /v1/conversations/{id}/messages
 │   ├── orchestrator/
-│   │   ├── __init__.py
-│   │   ├── base.py                # Orchestrator ABC (interface/implementation decoupling)
-│   │   ├── agent_registry.py      # LangChain @tool-decorated functions, one per agent
-│   │   └── orchestrator.py        # LangGraphOrchestrator: StateGraph-based reason/act/observe loop
+│   │   ├── base.py                # Orchestrator ABC, TurnContext, domain errors
+│   │   ├── agent_registry.py      # @tool functions, one per agent; scope injected via config
+│   │   └── orchestrator.py        # LangGraphOrchestrator: graph, streaming, history
 │   ├── clients/
-│   │   ├── base.py                # Abstract interface for agent clients
-│   │   ├── manuals_client.py      # HTTP client for the Manuals Agent
-│   │   └── exceptions.py          # AgentUnavailableError (domain-level error)
+│   │   ├── base.py                # HttpAgentClient: shared transport, retry, validation
+│   │   ├── manuals_client.py      # Manuals Agent client
+│   │   ├── docs_client.py         # Docs Agent client (carries company_id)
+│   │   ├── iot_client.py          # IoT Agent client
+│   │   └── exceptions.py          # AgentUnavailableError
+│   ├── security/
+│   │   ├── passwords.py           # scrypt hashing / verification
+│   │   └── session.py             # authenticate, create/resolve/destroy session
 │   ├── db/
-│   │   ├── engine.py              # Async engine, session factory, create_all, FK pragma
-│   │   ├── models.py              # SQLModel tables: Company, User, MachineModel, Machine, Manual
-│   │   └── seed.py                # Fixture bootstrap + manual ingest from data/manuals
+│   │   ├── engine.py              # Async engine, session factory, SQLite PRAGMAs, create_all
+│   │   ├── models.py              # SQLModel tables (see Domain database)
+│   │   └── seed.py                # Dataset fixtures, dev credentials, manual ingest
 │   ├── models/
-│   │   └── chat.py                # ChatRequest / ChatResponse (endpoint contract)
+│   │   ├── auth.py                # LoginRequest / UserOut
+│   │   └── chat.py                # ChatRequest / ChatResponse / ConversationHistory
 │   └── resources/
-│       ├── repository.py          # Repository interfaces + DB-backed implementations
-│       ├── router.py              # Read-only machine and manual endpoints
+│       ├── repository.py          # Tenant-scoped repository interfaces + DB implementations
+│       ├── router.py              # Machine and manual endpoints
 │       └── schemas.py             # MachineOut / ManualOut — the wire contract
 │
-├── data/
-│   ├── manuals/                   # <serialNumber>_manual_<LANG>.pdf — source of truth for documentation
-│   ├── domain.db                  # Domain database (SQLite)
+├── data/                          # created at startup, persisted by the bind mount
+│   ├── domain.sqlite              # Domain database (+ -wal / -shm side files)
 │   └── checkpoints.sqlite         # LangGraph conversation checkpoints (separate DB)
 ├── requirements.txt
 ├── .env
@@ -77,553 +88,447 @@ backend/
 └── Dockerfile
 ```
 
+The manual PDFs are **not** under `backend/`: they live in `data/manuals/` at
+the **root of the monorepo**, shared with the agents service, and are mounted
+read-only at `/data/manuals` in both containers.
+
 ## What each part does
 
 ### `app/main.py`
-Creates the single FastAPI application instance, includes all routers,
-and configures logging. Defines the **`lifespan`**: at startup it creates
-the domain tables, runs the seed, opens the durable checkpointer and
-compiles the graph (through `build_graph()`), wraps it in a
-`LangGraphOrchestrator`, and places that on `app.state`; at shutdown the
-checkpointer's SQLite connection is closed cleanly as the `async with`
-unwinds. This is why the graph is an application resource created at
-startup, not a module-level global.
+Creates the FastAPI application, configures logging, CORS and the routers.
+The **`lifespan`** creates the domain tables, runs the seed, opens the durable
+checkpointer and compiles the graph (`build_graph()`), wraps it in a
+`LangGraphOrchestrator` and stores it on `app.state`; at shutdown the
+checkpointer connection closes as the `async with` unwinds and the engine's
+pooled connections are disposed.
+
+There is intentionally **no `StaticFiles` mount** for the manuals: a static
+mount would serve any PDF to anyone who guesses a filename, bypassing both
+authentication and tenant scoping. PDFs are served only through
+`GET /v1/manuals/{id}/file`.
+
+CORS lists the frontend origins explicitly with `allow_credentials=True`:
+the browser only sends the session cookie cross-origin under that
+combination, and a wildcard origin is not allowed with credentials.
 
 ### `app/config.py`
-Centralizes all configuration using `pydantic-settings`. Two
-independent sets of LLM settings: one for the Manuals Agent's own model
-(unchanged) and one for the orchestrator's routing model
-(`ORCHESTRATOR_*`), including `ORCHESTRATOR_NUM_CTX` — the context
-window is now fixed explicitly rather than left to `ChatOllama`'s
-default, since a mismatch here can silently push VRAM usage past what's
-available and force CPU offload (5-30x slowdown). Verify actual GPU
-placement any time with `ollama ps` (`PROCESSOR` column should read
-`100% GPU`). Also bridges the Langfuse credentials into `os.environ`
-after building `settings`, because Langfuse's `CallbackHandler` reads
-them directly from the process environment, not from the pydantic
-`settings` object.
+A single typed source of configuration. Resolution order for every field:
+process environment (docker-compose `environment:`) > `backend/.env` > the
+default in the class. Fields without a default (`ORCHESTRATOR_OLLAMA_MODEL`,
+the two Langfuse keys) are mandatory: if missing, the app refuses to start.
 
-It also holds the two storage paths, `DOMAIN_DB_PATH` and `MANUALS_DIR`.
-Both are anchored to the location of `config.py` itself
-(`Path(__file__).resolve().parent.parent / ...`) rather than being
-relative to the process working directory: a working-directory-relative
-path resolves differently depending on where `uvicorn` is launched from
-and on the container's `WORKDIR`, and fails *silently* (the seed logs a
-warning and registers zero manuals instead of raising). Both remain
-overridable by environment variable.
+Defaults target **local** development (everything on `localhost`); inside
+Docker every network address is overridden by the compose file, because in a
+container `localhost` is the container itself. `ORCHESTRATOR_LLM_PROVIDER` is
+a `Literal["ollama"]`, so an unsupported value fails validation instead of
+being silently ignored. `ORCHESTRATOR_NUM_CTX` fixes the context window
+explicitly: a mismatch can push VRAM usage past what is available and force
+CPU offload (5-30x slowdown) — check with `ollama ps` (`PROCESSOR` should read
+`100% GPU`).
 
-### `app/api/v1/chat.py`
-The HTTP-facing layer. Validates the incoming `ChatRequest` and
-delegates entirely to the orchestrator — `handle(...)` for the
-non-streaming endpoint, `handle_stream(...)` for the streaming one — and
-serializes the streaming orchestrator's semantic events into the SSE
-wire format (`event:`/`data:` frames). It also exposes the read-only
-history endpoint, which calls `orchestrator.get_history(...)` and turns
-a `None` result into a `404`. It contains no business logic and no
-networking code towards the agents, and does not know which agents
-exist.
+All paths, including the `.env` file itself, are anchored to the location of
+`config.py`, never to the working directory, so they resolve the same way
+whatever directory `uvicorn` is launched from.
+
+The module ends with a bridge into `os.environ` for the Langfuse credentials:
+Langfuse's `CallbackHandler` reads them from the process environment, while
+pydantic-settings reads `.env` into the model without exporting it.
+`setdefault` never overwrites, so in Docker (where the variables are real) the
+bridge is a no-op.
+
+### `app/api/`
+- **`deps.py`** — `get_current_user` reads the session cookie and resolves it
+  through `security/session.py`; a missing, unknown or expired session fails
+  with `401` before the endpoint runs. `CurrentUser` is the annotated alias
+  endpoints and dependencies declare.
+- **`v1/auth.py`** — the session as a resource: login creates it (and sets
+  the cookie), `GET /current` reads it, logout deletes it.
+- **`v1/chat.py`** — the chat endpoints. A turn runs in **two phases**:
+  1. `prepare_turn` runs in the endpoint body, **before** any response is
+     started, so its failures are real HTTP status codes (`404`);
+  2. the graph runs inside the SSE generator, which starts only after `200`
+     and the headers have been sent — from there on a failure can only be an
+     `error` event.
+
+  The orchestrator is obtained through a `get_orchestrator` dependency (not
+  read from `app.state` inline) so tests can replace it.
 
 ### `app/orchestrator/`
-- **`base.py`** — abstract `Orchestrator` interface (`handle(request) -> ChatResponse`).
-  Kept as an ABC to decouple the API layer from the concrete
-  implementation; documented as a deliberate architectural choice
-  rather than a requirement of the current implementation.
-- **`agent_registry.py`** — one `@tool`-decorated async function per
-  agent (currently `search_manuals`). LangChain inspects the function's
-  typed signature and docstring to generate the tool schema
-  automatically — no manual JSON schema or dict-argument translator
-  needed anymore (unlike iteration 2's `AgentTool`/`ToolHandler`). Each
-  tool uses `@tool(response_format="content_and_artifact")`, returning
-  a `(content, artifact)` tuple: `content` (string) is what the LLM
-  reads to reason/compose; `artifact` (a real dict) is what
-  `orchestrator.py` reads back to extract structured citations —
-  **this parameter is required**, a plain `@tool` silently breaks
-  citation extraction with no error. Adding a new agent means adding one `@tool`
-  function here — nothing else changes.
-- **`orchestrator.py`** — `LangGraphOrchestrator`, wrapping a compiled
-  `StateGraph`: an `agent` node (calls `ChatOllama`, bound to
-  `AGENT_TOOLS` once at module load, not per call) and a `tools` node
-  (`ToolNode`, executes whatever the LLM requested), connected by a
-  conditional edge (`tools_condition`) that loops back to `agent` until
-  the LLM responds with plain text. Exposes two entry points:
-  `handle()` runs the graph to completion with `graph.ainvoke(...)` and
-  returns a single `ChatResponse`; `handle_stream()` runs the same
-  graph with `graph.astream(stream_mode=["messages", "updates"])` and
-  yields a sequence of semantic events (start / thinking / status /
-  token / error / citations / done) as execution proceeds.
-  `recursion_limit` (passed to the graph) counts every node execution,
-  not full reason/act cycles — computed as
-  `ORCHESTRATOR_MAX_ITERATIONS * 2 + 1`, an approximation to re-tune
-  with real testing.
-  The graph is compiled with a durable checkpointer (`AsyncSqliteSaver`),
-  so each invocation is keyed by a `thread_id` passed in
-  `config["configurable"]`. Both entry points derive it as
-  `request.session_id or str(uuid4())` — a missing id means "new
-  conversation" (generate one), a present id means "resume that thread".
-  Because the saver holds an open connection to a file, the graph is no
-  longer compiled at module load: it is built inside a FastAPI `lifespan`
-  (via `build_graph()`, an async context manager that opens the saver and
-  yields the compiled graph), and the resulting orchestrator is stored on
-  `app.state`, from which the endpoints read it. The persisted state holds
-  conversation messages only: the system prompt is prepended inside the
-  `agent` node at call time rather than seeded into state, so it never
-  accumulates across turns as `add_messages` merges each new turn onto the
-  loaded history.
-  Beyond the two chat entry points, the orchestrator exposes
-  `get_history(session_id)`, which reads the persisted state via
-  `aget_state` and **projects** it into a client-facing shape: it filters
-  out the mechanical messages (the empty tool-call `AIMessage`, the raw
-  `ToolMessage`), keeps only the human-visible turns as `user`/`assistant`
-  entries, strips the internal `[machine_id: ...]` routing tag from user
-  content, and re-attaches each turn's citations (which live in the tool
-  artifact, not the answer) to that turn's assistant message. It returns
-  `None` when the thread has no saved state, which the endpoint maps to a
-  `404`.
+- **`base.py`** — the contract between the HTTP layer and the engine:
+  `prepare_turn(user, request) -> TurnContext`, `handle(context, query)`,
+  `handle_stream(context, query)`, `get_history(user, thread_id)`. It also
+  defines the domain errors `MachineNotFoundError` and
+  `ConversationNotFoundError`: the orchestrator says *what* went wrong, the
+  HTTP layer decides the status code, so the orchestrator stays free of
+  FastAPI.
+- **`agent_registry.py`** — one `@tool(response_format="content_and_artifact")`
+  function per agent: `search_manuals`, `search_docs`, `search_iot`. `content`
+  (a JSON string) is what the LLM reads; `artifact` (a dict) is what the
+  orchestrator reads back to extract sources — a plain `@tool` would silently
+  break source extraction. **The only argument the LLM controls is the
+  query**: `machine_id` and `company_id` are injected through the
+  `RunnableConfig` parameter, which LangChain hides from the tool schema, so
+  the model can neither set, widen nor forge the scope. The manuals tool asks
+  the model to rewrite the query **in English with the manual's technical
+  terms**, because the manuals are English and searched semantically. Adding
+  an agent means one client and one `@tool` function here.
+- **`orchestrator.py`** — `LangGraphOrchestrator`.
+  - `prepare_turn` checks that the machine belongs to the user's company
+    (through the tenant-scoped repository) and, for an existing thread, that
+    it belongs to the user and to that same machine; for a new thread it
+    mints a UUID and records ownership in the `conversations` table.
+  - `handle` runs the graph to completion (`ainvoke`); `handle_stream` runs it
+    with `astream(stream_mode=["messages", "updates"])` and yields semantic
+    events. Because of checkpointing, the graph result holds the **whole**
+    thread: sources are taken only from the current turn (from the last
+    `HumanMessage` on).
+  - `get_history` returns `None` both for an unknown thread and for another
+    user's thread (the caller cannot tell the two apart), then **projects**
+    the checkpoint into a client view: tool-call messages and raw tool
+    results are dropped, and each answer carries the sources of its turn.
+  - `normalize_artifact` turns every tool artifact into a flat list of
+    sources with a `kind` discriminator (`manual`, `document`, `order`,
+    `quote`, `health`, `telemetry`, `alarms`, `maintenance`); exact
+    duplicates are removed (an agent with its own internal loop may return
+    the same citation once per internal search).
+  - `recursion_limit` counts node executions: `ORCHESTRATOR_MAX_ITERATIONS * 2 + 1`.
+  - The system prompt is prepended at call time, never stored in the state,
+    so it does not accumulate across turns and a prompt change applies to old
+    conversations too. It defines four routing actions (ROUTE / CLARIFY /
+    CHITCHAT / DECLINE), requires answering in the user's language, and
+    forbids any technical content, quotation or page number that is not in a
+    tool result.
 
 ### `app/clients/`
-One client class per agent, each implementing a shared abstract
-interface (`base.py`). A client's only job is to know how to talk to
-one specific agent over HTTP — building the request, handling
-timeouts/retries, and translating low-level `httpx` errors into a
-single domain-level `AgentUnavailableError`. This isolates the
-orchestrator from networking details entirely: if the transport layer
-changes later (e.g. moving to MCP), only the client implementation
-needs to change.
+`HttpAgentClient[T]` holds the whole transport: POST with retry, mapping of
+every failure onto `AgentUnavailableError`, and validation of the response
+against the shared `contracts` schema. Concrete clients only declare the
+endpoint path, the response schema and a display name. The retry (tenacity)
+covers **only** the raw network call and only transient errors (timeout,
+connection refused): an HTTP error status is a real answer, not a glitch, and
+retrying a higher-level method would repeat parsing and tracing side effects.
+A malformed response body is reported as `AgentUnavailableError` too, so a
+misbehaving agent never crashes the graph. `DocsClient` is the one whose task
+carries a tenant: it takes `company_id` as a keyword-only argument.
 
-`manuals_client.py` also applies automatic retry (via `tenacity`) on
-transient network errors (timeout, connection refused), but not on
-HTTP error status codes, since those usually indicate a logic error
-rather than a temporary glitch.
+### `app/security/`
+- **`passwords.py`** — scrypt with a per-user random salt; verification uses
+  `hmac.compare_digest` (constant time).
+- **`session.py`** — the server-side half of session auth.
+  - The cookie carries a random 256-bit token; the database stores only its
+    **SHA-256 digest**, so a copy of the DB yields no usable session. A fast
+    hash is enough here, unlike passwords: the token cannot be brute-forced.
+  - `authenticate` returns one result for every failure (unknown email, no
+    password, wrong password) and verifies against a dummy hash when the
+    email is unknown, so neither the answer nor its timing reveals which
+    addresses exist. scrypt runs in a worker thread, off the event loop.
+  - Sessions have an 8-hour **idle** timeout with a sliding window; the
+    deadline is rewritten only when it moves by at least 5 minutes, to avoid
+    one SQLite write per request. Expired sessions are deleted, not just
+    rejected.
+  - Emails are compared **case-sensitively**, by design.
 
 ### `app/db/`
 - **`engine.py`** — the async engine (`sqlite+aiosqlite`), the session
-  factory, and `create_db_and_tables()`. It also registers a `connect`
-  event listener issuing `PRAGMA foreign_keys=ON`: **SQLite disables
-  foreign keys by default, per connection**, so without this listener
-  every FK and every `ON DELETE RESTRICT` in the schema is silently
-  ignored — the constraints exist in the DDL but never fire.
-- **`models.py`** — the five SQLModel tables (see *Domain database*).
-- **`seed.py`** — populates the DB at startup. Idempotency is split in
-  two, deliberately: **reference data** (companies, users, models,
-  machines) is inserted only when the DB is empty, while **manuals are
-  reconciled on every run** by scanning `MANUALS_DIR`. Dropping a new PDF
-  into the folder and restarting is therefore enough to register it,
-  without wiping anything. The current fixtures are placeholders for the
-  XLSX bootstrap; only the eight serial numbers are real.
+  factory (`expire_on_commit=False`: async SQLAlchemy forbids the implicit
+  reload an expired object would trigger), `create_db_and_tables()` (which
+  first creates the data directory) and the `get_session` dependency (one DB
+  session per request, shared by every dependency of that request). A
+  `connect` listener sets three PRAGMAs on every new connection:
+  `foreign_keys=ON` (off by default in SQLite: without it every FK and every
+  `ON DELETE` rule is silently ignored), `journal_mode=WAL` (readers and the
+  writer no longer block each other) and `busy_timeout=5000` (wait for the
+  write lock instead of failing with *database is locked*).
+- **`models.py`** — the tables (see *Domain database*) and `UTCDateTime`, a
+  column type that normalises datetimes to UTC on write, rejects naive ones,
+  and re-attaches UTC on read (SQLite stores no timezone).
+- **`seed.py`** — runs at every startup, idempotently. **Reference data**
+  (transcribed from `AROL_Q2_synthetic_fleet_dataset.xlsx`, the same workbook
+  the mock-backoffice serves) is inserted only on an empty DB; **credentials**
+  (the shared dev password `Arol2026!`) are given to users that have none;
+  **manuals** are reconciled on every run by scanning `MANUALS_DIR`.
 
 ### `app/models/`
-Pydantic schemas shared with the Agents project via the `contracts`
-package (e.g. `SearchManualResponse`, `Citation`). `app/models/chat.py`
-defines `ChatRequest`/`ChatResponse`, the contract for the chat
-endpoints (not shared with the agents project, since it's
-backend/frontend-specific). `ChatRequest.session_id` is optional —
-absent on the first turn, echoed back by the client on subsequent turns
-to continue the same conversation. It also defines the history contract:
-`ConversationHistory` (a `session_id` plus a list of `HistoryMessage`),
-`HistoryMessage` (a `role`, `content`, and always-present `citations`),
-and the `MessageRole` enum (`user` / `assistant`).
+Request/response contracts of the backend's own API (not shared with the
+agents, which use the `contracts` package): `LoginRequest`/`UserOut`, and
+`ChatRequest`/`ChatResponse`/`ConversationHistory`/`HistoryMessage`/`MessageRole`.
+`ChatRequest.query` is stripped and must be 1-2000 characters;
+`thread_id` is a UUID (anything else is a `422`).
 
 ### `app/resources/`
-- **`repository.py`** — the data-access interfaces and their DB-backed
-  implementations. `MachineRepository` exposes `list_machines`,
-  `get_machine` (by primary key) and `get_machine_by_serial`;
-  `ManualRepository` exposes `get_by_machine`, `get_by_filename` and
-  `get_manual`. `get_by_machine` returns a single `Manual | None`, not a
-  list, because the 1:1 relation is enforced by a UNIQUE constraint —
-  returning a list would advertise a cardinality the schema forbids.
-- **`schemas.py`** — the **wire** contract, deliberately distinct from
-  the table models, because the two differ by *subtraction* and by
-  *addition*. Subtraction: `Manual.storage_path` is a server-side
-  filesystem path and must never travel over HTTP. Addition: `url` is not
-  a column at all — it is derived from the route that serves the file, so
-  it is composed in `ManualOut.from_model()`. Returning SQLModel tables
-  directly would make every future column public by default; the client
-  contract must be a decision, not a side effect of the schema.
-- **`router.py`** — the read-only endpoints, plus the two dependency
-  providers that pick the concrete repository implementation. This is the
-  only module that reads `storage_path`, in the file-download endpoint.
+- **`repository.py`** — **tenant-scoped** repositories: `company_id` is fixed
+  in the constructor and every query starts from a base query already
+  filtered by it, so no method can "forget" the tenant. Manuals have no
+  `company_id` of their own and are scoped through a join with their machine.
+  A row of another company comes back as `None`, exactly like a missing one.
+  Primary-key lookups use a filtered `select`, not `session.get`, because a
+  PK lookup cannot carry the tenant condition.
+  `MachineRepository`: `list_all`, `get`, `get_by_serial`.
+  `ManualRepository`: `get`, `get_by_machine`, `get_by_filename`.
+- **`schemas.py`** — the **wire** contract, distinct from the tables by
+  *subtraction* (`storage_path` never leaves the process) and by *addition*
+  (`url`, a `computed_field` derived from the id).
+- **`router.py`** — the endpoints and the two dependency providers, which
+  take `company_id` from `CurrentUser`: since every endpoint depends on a
+  provider, every endpoint is authenticated without declaring it.
 
 ## Domain database
 
-A SQLite database (`DOMAIN_DB_PATH`) modelled on the AROL Q2 synthetic
-fleet dataset. It is separate from the LangGraph checkpoint DB: one holds
-the fleet, the other holds conversations, and they share nothing.
-
-The backend owns the **identity layer** only — who the customers are,
-which machines they own, and the manuals documenting them. Telemetry,
-alarms, maintenance history, orders and quotes are treated as external
-AROL services and are deliberately **not** stored here.
+A SQLite database (`DOMAIN_DB_PATH`) modelled on the AROL Q2 synthetic fleet
+dataset, separate from the LangGraph checkpoint DB. The backend owns the
+**identity layer** — who the customers are, who their users are, which
+machines they own, the manuals documenting them — plus authentication
+sessions and conversation ownership. Telemetry, alarms, maintenance, orders
+and quotes belong to external services (the mock-backoffice, reached through
+the agents) and are **not** stored here.
 
 ### Tables
 
 | Table            | Key fields | Notes |
 |------------------|-----------|-------|
-| `companies`      | `id` (`CMP-001`), name, country, city, sector, currency, locale | The tenant boundary of the access model. |
-| `users`          | `id` (`USR-001`), `company_id` → companies, first/last name, email, job title, `visibility` | `visibility` is a closed vocabulary: `full` / `technician` / `commercial`. |
-| `machine_models` | `id` (`MDL-100`), model code, description, `primitive_diameter`, nominal heads, container/cap type, industry segment, notes | Catalogue-level specification, shared by many machines. `primitive_diameter` is the only nullable column. |
-| `machines`       | `id` (`MCH-0001`), `company_id` → companies, `model_id` → machine_models, `serial_number` (UNIQUE), delivery date, plant location, configuration profile, `plc_family`, software version | The physical unit. `plc_family` is a closed vocabulary: `SIEMENS-SIMATIC-S7` / `LINE-PLC-INTEGRATED` / `HARDWIRED-CONTROL-PANEL`. |
-| `manuals`        | `id` (UUID), `machine_id` → machines (UNIQUE), filename, `storage_path`, content type, size, uploaded at, language, title | One manual per machine, exactly. |
+| `companies`      | `id` (`CMP-001`), name, country, city, sector, currency, locale | The tenant boundary. |
+| `users`          | `id` (`USR-001`), `company_id` → companies, first/last name, `email` (UNIQUE), job title, `visibility`, `password_hash`, `salt` | `visibility` ∈ `full` / `technician` / `commercial`. Hash and salt are nullable: the dataset ships people, not credentials. |
+| `machine_models` | `id` (`MDL-100`), model code, description, `primitive_diameter`, nominal heads, container/cap type, industry segment, notes | Catalogue-level specification. `primitive_diameter` is NULL for the single-head turrets. |
+| `machines`       | `id` (`MCH-0001`), `company_id` → companies, `model_id` → machine_models, `serial_number` (UNIQUE), `delivery_date` (date), plant location, configuration profile, `plc_family`, `software_version` | The physical unit. `plc_family` ∈ `SIEMENS-SIMATIC-S7` / `LINE-PLC-INTEGRATED` / `HARDWIRED-CONTROL-PANEL`. `software_version` is NULL when the machine has none. |
+| `manuals`        | `id` (UUID), `machine_id` → machines (UNIQUE), `filename` (UNIQUE), `storage_path`, content type, size, uploaded at, language, title | One manual per machine, exactly. |
+| `sessions`       | `id` (SHA-256 of the token), `user_id` → users, created at, expires at | Model class `AuthSession`, to stay distinct from DB sessions and chat threads. |
+| `conversations`  | `thread_id` (UUID), `user_id` → users, `machine_id` → machines, created at | Ownership of a chat thread; the messages themselves live in the checkpoint DB. |
 
 Design decisions worth knowing:
 
-- **Two identifiers, two jobs.** `machine_id` is the surrogate primary
-  key and the target of every foreign key: it exists only to identify,
-  so it never needs to change. `serial_number` is the natural key from
-  the outside world and is the **resolution** key — it is what a manual
-  filename, a QR code or a machine plate carries. Hanging foreign keys
-  off the serial would turn a typo correction into a migration; hence FK
-  on the id, lookups on the serial. `serial_number` is UNIQUE precisely
-  because resolution must be unambiguous.
-- **1:1 between machines and manuals** is enforced by a UNIQUE constraint
-  on `manuals.machine_id`, not merely assumed. A plain foreign key would
-  allow N manuals per machine, which the dataset does not.
-- **`ON DELETE RESTRICT` on every foreign key** — an existing company
-  cannot be deleted while it still owns machines, a model cannot be
-  deleted while units of it are installed.
-- **Closed vocabularies are enforced by the database**, not only by
-  Python: the enums are declared with `create_constraint=True`, which
-  emits a SQL `CHECK`. Without it (SQLAlchemy's default since 1.4) the
-  column is a plain `VARCHAR` and any write bypassing the ORM can store
-  an invalid value.
-- **No `status` column.** Runtime state is not an attribute of a machine;
-  it is the latest reading of its telemetry stream, which belongs to an
-  external service. The dataset's `operationalStatus` vocabulary has six
-  values (`Running`, `Alarm`, `Idle`, `Stopped`, `Maintenance`,
-  `Size change`), not the three of the earlier mock enum.
-- **`delivery_date` is stored as a string**, faithful to the dataset; it
-  is displayed, not computed on.
+- **Two identifiers, two jobs.** `machine_id` is the primary key and the
+  target of every foreign key; `serial_number` is the natural key from the
+  outside world (manual filename, QR code, plate) and the **resolution** key.
+  Both are UNIQUE because resolution must be unambiguous.
+- **Natural keys from the dataset** (`CMP-…`, `USR-…`, `MCH-…`) are kept as
+  primary keys because they are shared with the mock-backoffice and the
+  agents; `manuals` uses a surrogate UUID because the file has no external id.
+- **Delete rules follow meaning**: `RESTRICT` on the domain data (a company
+  that still owns machines cannot disappear); `CASCADE` from `users` to
+  `sessions` and `conversations` (without an owner they are garbage).
+- **Closed vocabularies are enforced by the database** (`create_constraint=True`
+  emits a SQL `CHECK`), not only by Python.
+- **Absence is `NULL`**, never a sentinel string such as `'n/a'`.
+- **No `status` column** on machines: runtime state is the latest telemetry
+  reading, owned by the IoT agent.
+- **The two databases are not linked by a real foreign key** (they are
+  separate files): deleting a `conversations` row does not delete its
+  checkpoints.
 
 ### Manual ingest
 
-Manuals are not seeded by hand: `seed.py` scans `MANUALS_DIR` for files
-named `<serialNumber>_manual_<LANG>.pdf`, extracts the serial, resolves
-the owning machine through it, and registers the row with that machine's
-`id`. The folder is the source of truth for documentation.
-
-Serials come in **two shapes**, numeric (`17478`) and alphanumeric
-(`A2055`), so the filename pattern must not assume digits — a `\d+`
-serial group silently drops half the fleet, with no error and no manual
-registered for those machines.
-
-Files that do not match the pattern, and files whose serial matches no
-machine, are skipped with a warning rather than aborting the seed.
+`seed.py` scans `MANUALS_DIR` for `<serialNumber>_manual_<LANG>.pdf`,
+resolves the owning machine through the serial, and registers the row with
+that machine's `id`. Serials are numeric (`17478`) or alphanumeric (`A2055`),
+so the pattern must not assume digits. Non-matching files and unknown serials
+are skipped with a warning. This registers the files for **download**; the
+**search index** (Chroma) is built separately by the agents service — see
+`agents/README.md`, step 9.
 
 ## API
 
-The backend exposes chat endpoints (streaming and non-streaming), a
-conversation history endpoint, read-only resource endpoints for machines
-and manuals, and a health check. The two chat endpoints accept the
-**same** request body and delegate entirely to the orchestrator; they
-differ only in how the answer is delivered — one JSON block versus
-token-by-token.
+All endpoints except `/health` and `POST /v1/sessions` require the session
+cookie; without it they answer `401`. A resource or conversation that belongs
+to someone else answers `404`, exactly like a missing one — `403` would
+confirm that the id exists.
 
-### `GET /`
+### `GET /health`
+Liveness probe (used by the compose healthcheck). No auth, no DB.
+**Returns** `{"status": "ok"}`.
 
-Health check. Takes no input.
+### `POST /v1/sessions` — login
+**Receives** `{ "email": "...", "password": "..." }`.
+**Returns** `201` with the user (`id`, `company_id`, `first_name`, `last_name`,
+`email`, `job_title`, `visibility` — never credential material) and sets the
+cookie `arol_session` (`HttpOnly`, `SameSite=Lax`, `Secure` when
+`SESSION_COOKIE_SECURE=true`, no `Max-Age`: expiry is enforced server-side).
+`401 "Invalid email or password"` for every kind of failure.
 
-**Returns**: `{"status": "ok"}`. Used to confirm the service is up.
+### `GET /v1/sessions/current` — who am I
+**Returns** the same user object, or `401`. The frontend calls it on load to
+know whether it is logged in.
+
+### `DELETE /v1/sessions/current` — logout
+Deletes the session and the cookie. **Returns** `204`. Idempotent.
 
 ### `POST /v1/chat`
-
-Non-streaming chat. Receives the user's question, runs the full
-orchestrator graph to completion (`graph.ainvoke`), and returns the
-assembled answer as a single JSON object. This is the endpoint to use
-from Swagger UI, automated tests, or any client that does not consume
-SSE.
+Non-streaming chat: runs the graph to completion and returns one JSON object.
 
 **Receives** — `ChatRequest`:
 
 | Field        | Type  | Description |
 |--------------|-------|-------------|
-| `query`      | `str` | The user's question in natural language. |
-| `machine_id` | `str` | Identifier of the machine the question refers to. Injected into the tool call, not treated as part of the question to interpret. |
-| `session_id` | `str \| None` | Conversation id. Omit (or `null`) to start a new conversation; pass the id returned by a previous turn to continue it. |
+| `query`      | `str` | The user's question, 1-2000 characters after stripping whitespace. |
+| `machine_id` | `str` | The machine the conversation is about. Must belong to the user's company. |
+| `thread_id`  | `UUID \| null` | Omit on the first turn; send back the returned id to continue. The thread must belong to the user and to the same `machine_id`. |
 
-```json
-{ "query": "perché la macchina non parte", "machine_id": "MCH-0004" }
-```
-
-**Returns** — `ChatResponse`:
-
-| Field        | Type              | Description |
-|--------------|-------------------|-------------|
-| `answer`     | `str`             | Final assistant response, composed by the orchestrator strictly from the tool results. |
-| `citations`  | `list[Citation]`  | Structured references extracted from the tool artifacts; each `Citation` has `doc`, `page`, `snippet`. Empty list if none. |
-| `session_id` | `str`             | Conversation identifier (the graph's `thread_id`). Always returned — freshly generated on a new conversation, or echoed back when resuming. Send it in the next `ChatRequest` to continue the conversation. |
+**Returns** — `ChatResponse`: `answer` (str), `sources` (list of objects with
+a `kind` discriminator, only from this turn, deduplicated), `thread_id` (UUID).
 
 ```json
 {
   "answer": "...",
-  "citations": [{ "doc": "17478_manual_EN.pdf", "page": 12, "snippet": "..." }],
-  "session_id": "3f2c1a9e-8b7d-4e6f-a1c2-9d8e7f6a5b4c"
+  "sources": [{ "kind": "manual", "doc": "15610_manual_EN.pdf", "page": 89, "snippet": "..." }],
+  "thread_id": "57862673-7b99-401e-be0c-3942c1a3110f"
 }
 ```
 
-> **Cross-service contract**: `Citation.doc` must be the same string
-> stored in `manuals.filename` (`<serialNumber>_manual_<LANG>.pdf`), or
-> the frontend cannot resolve a citation back to a manual row. This is
-> the agreement to keep aligned with the agents service — a mismatch
-> breaks the link with no error on either side.
+**Errors**: `401` not logged in; `404` machine not in the user's company, or
+thread not owned by the user / opened on another machine; `422` invalid body.
 
-### `GET /v1/conversations/{session_id}/messages`
-
-Conversation history — re-reads a past conversation from the durable
-checkpointer for re-display (e.g. the frontend reopening a machine's
-chat). Receives a `session_id` in the path and returns that
-conversation's messages, projected for the client: internal mechanics
-(empty tool-call messages, raw tool results) are removed, the
-`[machine_id: ...]` routing tag is stripped from user messages, and each
-answer's citations are attached to it.
-
-**Returns** — `ConversationHistory`:
-
-| Field        | Type                  | Description |
-|--------------|-----------------------|-------------|
-| `session_id` | `str`                 | The conversation id (echoed from the path). |
-| `messages`   | `list[HistoryMessage]`| The projected conversation, in order. |
-
-Each `HistoryMessage` has `role` (`user` / `assistant`), `content`, and
-`citations` (a list of `{ doc, page, snippet }`, always present — empty
-for user messages and for answers with no references).
-
-Responds `404` if no conversation with that id exists (an unknown
-`session_id` has no saved state; there is no such thing as a real
-conversation with zero messages).
-
-```json
-{
-  "session_id": "3f2c1a9e-8b7d-4e6f-a1c2-9d8e7f6a5b4c",
-  "messages": [
-    { "role": "user", "content": "come faccio la manutenzione?", "citations": [] },
-    { "role": "assistant", "content": "Ecco la procedura...", "citations": [
-      { "doc": "17478_manual_EN.pdf", "page": 12, "snippet": "..." }
-    ]}
-  ]
-}
-```
-
-### `GET /v1/machines`
-
-Fleet list. Takes no input.
-
-**Returns**: a JSON array of `MachineOut` objects, each with `id`,
-`company_id`, `model_id`, `serial_number`, `delivery_date`,
-`plant_location`, `configuration_profile`, `plc_family` and
-`software_version`. An empty array is a valid response.
-
-> **Known gap**: this endpoint has **no tenant filter** and currently
-> returns every company's fleet. `company_id` is meant to be a boundary
-> that is never crossed; closing this requires an authenticated user to
-> take the `company_id` from. See *Known limitations*.
-
-### `GET /v1/machines/{machine_id}`
-
-Machine detail — the landing target of the QR-scan use case. Receives a
-machine id in the path and returns that single machine's record.
-
-**Returns**: one `MachineOut`. Responds `404` if no machine with that id
-exists. The id space is shared with the chat endpoint's `machine_id`, so
-the same identifier addresses a machine everywhere in the system.
-
-### `GET /v1/machines/by-serial/{serial_number}`
-
-Machine detail by **serial number** — the identifier printed on the
-machine itself. This is the entry point for the QR-code URL form that
-carries a serial rather than an id, and for resolving a manual filename
-(or an agent citation) back to a machine.
-
-**Returns**: one `MachineOut`. Responds `404` if no machine carries that
-serial. No routing conflict with `/v1/machines/{machine_id}`: that route
-has two path segments, this one has three, so they can never match the
-same URL.
-
-### `GET /v1/machines/{machine_id}/manual`
-
-The manual of a machine. **Singular, and returns an object rather than an
-array** — a machine has at most one manual, enforced by a UNIQUE
-constraint.
-
-**Returns**: one `ManualOut`. Two distinct `404`s, deliberately: *machine
-not found* and *no manual registered for this machine* are different
-failures pointing at different causes (a wrong id versus an ingest that
-did not link the PDF).
-
-### `GET /v1/manuals/{manual_id}`
-
-Manual detail. Receives a manual id (a UUID) in the path.
-
-**Returns**: one `ManualOut`, with `id`, `machine_id`, `title`,
-`filename`, `language`, `content_type`, `size`, `uploaded_at` and `url`.
-Responds `404` if no manual with that id exists.
-
-`url` is the relative path of the download endpoint below — the client
-follows it rather than constructing it. `storage_path` is never exposed.
-
-```json
-{
-  "id": "a71d2c59-f6dd-4848-a8fc-5e6a1ffcc86d",
-  "machine_id": "MCH-0004",
-  "title": "Use & Maintenance Manual",
-  "filename": "17478_manual_EN.pdf",
-  "language": "en",
-  "content_type": "application/pdf",
-  "size": 18682784,
-  "uploaded_at": "2026-08-11T16:06:03.840731",
-  "url": "/v1/manuals/a71d2c59-f6dd-4848-a8fc-5e6a1ffcc86d/file"
-}
-```
-
-### `GET /v1/manuals/{manual_id}/file`
-
-The PDF itself, streamed with `FileResponse` and a `Content-Disposition`
-carrying the original filename.
-
-**Returns**: the file bytes, `Content-Type: application/pdf`. Responds
-`404` both when the manual row does not exist and when the row exists but
-the file is missing on disk — the second case is a real one (an unmounted
-volume, a moved file) and is reported as a clean `404` rather than a
-`500`.
-
-```bash
-curl -s localhost:8000/v1/machines/MCH-0004/manual | python3 -m json.tool
-URL=$(curl -s localhost:8000/v1/machines/MCH-0004/manual \
-      | python3 -c "import json,sys; print(json.load(sys.stdin)['url'])")
-curl -s -o /tmp/m.pdf -w "%{http_code} %{content_type} %{size_download}\n" "localhost:8000$URL"
-```
+> **Cross-service contract**: a manual source's `doc` must equal
+> `manuals.filename` (`<serialNumber>_manual_<LANG>.pdf`), or the frontend
+> cannot resolve a citation back to a manual row.
 
 ### `POST /v1/chat/stream`
+Streaming chat over **Server-Sent Events**. Same request body and same
+pre-stream errors (`401`/`404`/`422`) as `POST /v1/chat`; once the stream has
+started the status is `200` and failures arrive as events. Each event is a
+frame `event: <type>\ndata: <json>\n\n`.
 
-Streaming chat over **Server-Sent Events (SSE)**. Receives the same
-`ChatRequest`, but instead of returning one JSON object it keeps the HTTP
-response open and streams a sequence of typed events as the graph
-executes (`graph.astream`), so the frontend can render the answer as it
-forms. The question travels in the request body; the whole answer
-streams back on the same connection.
+| Event      | When | `data` payload |
+|------------|------|----------------|
+| `start`    | Once, first | `{ "type": "start", "thread_id": "<uuid>", "is_new": true\|false }` |
+| `thinking` | While the model reasons | `{ "type": "thinking", "text": "<chunk>" }` — show collapsed/greyed |
+| `status`   | When the model calls a tool | `{ "type": "status", "tool": "search_manuals", "message": "Consulting search_manuals..." }` |
+| `token`    | While the answer is generated | `{ "type": "token", "text": "<chunk>" }` — concatenate to rebuild the answer |
+| `error`    | Agent failure (recoverable) or graph failure (fatal) | `{ "type": "error", "recoverable": true\|false, "message": "..." }` — fatal errors carry a generic message; details go to the log |
+| `sources`  | Once, after the graph ends | `{ "type": "sources", "sources": [ ... ] }` |
+| `done`     | Once, last | `{ "type": "done", "thread_id": "<uuid>" }` |
 
-**Receives**: identical to `POST /v1/chat` (`query`, `machine_id`,
-optional `session_id`).
+**Frontend note**: `EventSource` only supports `GET`; read this `POST` stream
+with `fetch` + `ReadableStream` and parse the frames manually, with
+`credentials: "include"`.
 
-**Returns**: `Content-Type: text/event-stream`. Each event is one SSE
-frame of the form `event: <type>\ndata: <json>\n\n`, where the `data`
-payload is a JSON object whose `type` field matches the event name.
+### `GET /v1/conversations/{thread_id}/messages`
+Re-reads a past conversation for re-display.
 
-Event sequence for a typical turn:
+**Returns** — `ConversationHistory`: `thread_id`, `machine_id` (the machine the
+thread is pinned to) and `messages`, each with `role` (`user`/`assistant`),
+`content` and `sources` (always present, empty for user messages).
+`404` if the thread does not exist or is not the caller's; `422` if the id is
+not a UUID. A thread whose first turn failed exists with an empty message list.
 
-| Event       | When | `data` payload |
-|-------------|------|----------------|
-| `start`     | Once, before the graph runs | `{ "type": "start", "session_id": "<uuid>" }` — the conversation id (echoed from the request if resuming, freshly generated otherwise), sent first so the frontend has it from the first byte. |
-| `thinking`  | While the routing LLM reasons (model-dependent) | `{ "type": "thinking", "text": "<chunk>" }` — reasoning tokens, delivered on a channel separate from the answer, meant to be shown collapsed/greyed. |
-| `status`    | When the LLM decides to call an agent | `{ "type": "status", "tool": "search_manuals", "message": "Consulting search_manuals..." }` — fills the silent gap of the HTTP call to the agent. |
-| `token`     | While the final answer is generated | `{ "type": "token", "text": "<chunk>" }` — one content chunk; concatenating all `token` events rebuilds the full answer. |
-| `error`     | On a recoverable agent failure, or a fatal graph error | `{ "type": "error", "recoverable": true\|false, "message": "..." }` — once streaming has begun the status is already `200 OK`, so failures are delivered as events, not as HTTP error codes. |
-| `citations` | Once, after the graph ends | `{ "type": "citations", "citations": [ ... ] }` — structured references accumulated from the tool artifacts, delivered separately from the token stream. |
-| `done`      | Once, last | `{ "type": "done", "session_id": "<uuid>" }` — marks the end of the turn; the connection then closes. |
+### `GET /v1/machines`
+The caller's fleet: machines of their own company only, ordered by id.
+**Returns** a list of `MachineOut`: `id`, `company_id`, `model_id`,
+`serial_number`, `delivery_date` (`YYYY-MM-DD`), `plant_location`,
+`configuration_profile`, `plc_family`, `software_version` (nullable).
 
-Consume it with `curl -N` (Swagger UI buffers the stream and only shows
-it at the end, which defeats the purpose):
+### `GET /v1/machines/by-serial/{serial_number}`
+Machine by the serial printed on it (QR code, manual filename, citation).
+**Returns** one `MachineOut`, or `404`. Declared before
+`/machines/{machine_id}/manual`, which has the same shape: FastAPI matches
+routes in declaration order.
 
-```bash
-curl -N -X POST http://localhost:8000/v1/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"query": "perché la macchina non parte", "machine_id": "MCH-0004"}'
-```
+### `GET /v1/machines/{machine_id}`
+Machine detail — the landing target of the QR-scan use case. `404` if missing
+or not in the caller's company.
 
-**Frontend note**: the browser's native `EventSource` only supports
-`GET`. Since this endpoint is a `POST` (the question travels in the
-body), the frontend must read the stream with `fetch` + `ReadableStream`
-and parse the `event:`/`data:` frames manually, rather than using
-`EventSource`.
+### `GET /v1/machines/{machine_id}/manual`
+The manual of a machine — singular, one object. Two distinct `404`s:
+*machine not found* and *no manual registered for this machine*.
+
+### `GET /v1/manuals/{manual_id}`
+**Returns** one `ManualOut`: `id`, `machine_id`, `title`, `filename`,
+`language`, `content_type`, `size`, `uploaded_at` (UTC, with offset) and
+`url` — the relative path of the file endpoint, to be followed, not built.
+
+### `GET /v1/manuals/{manual_id}/file`
+The PDF, with `Content-Disposition: inline` (displayed by the browser; the
+original filename is kept for "save as"). The cookie travels automatically,
+so a plain link or an `<iframe>` works. `404` if the manual is missing or not
+in the caller's company; `500` (logged with the path) if the row exists but
+the file is missing on disk — the DB and the disk disagree, which is a server
+fault.
 
 ## Requirements
 
-- Python 3.12
-- `langgraph`, `langchain-ollama`, `langfuse`, `sqlmodel`, `aiosqlite`
-  (see `requirements.txt`)
-- Ollama running locally, with model(s) pulled that support tool
-  calling `gpt-oss:20b`. Currently the same
-  model is used for both the orchestrator and the Manuals Agent
-- The Manuals Agent running and reachable
-- A reachable Langfuse instance (self-hosted via Docker Compose) for
-  tracing; credentials provided via `.env` (see environment variables)
-- The manual PDFs present in `data/manuals/`, named
-  `<serialNumber>_manual_<LANG>.pdf`
+- Python 3.12, dependencies in `requirements.txt` (`fastapi`, `sqlmodel`,
+  `aiosqlite`, `langgraph`, `langgraph-checkpoint-sqlite`, `langchain`,
+  `langchain-ollama`, `langfuse`, `httpx`, `tenacity`, `pydantic-settings`)
+  and the shared `contracts` package
+- Ollama with a tool-calling model (`gpt-oss:20b`, also used by the agents)
+- The agents service and the mock-backoffice running
+- A reachable Langfuse instance, credentials in `.env`
+- The manual PDFs in `data/manuals/` at the **monorepo root**
 
-## Local setup
+## Running with Docker Compose (recommended)
+
+From the monorepo root:
+
+```bash
+docker compose up -d --build
+docker compose logs -f backend
+```
+
+The startup log must show `Seeded 5 companies, 19 users, 6 models, 8
+machines`, `19 user(s) provisioned`, and one `Manual … linked to machine …`
+line per PDF. The first time, also build the agents' search index
+(`agents/README.md`, step 9) and then **restart the agents container**: its
+Chroma client is opened once and does not see an index written by another
+process.
+
+## Local setup (without Docker)
 
 ```bash
 cd backend
 python3.12 -m venv venv
-source venv/bin/activate        # Linux
-# .\venv\Scripts\Activate.ps1   # Windows PowerShell
-
+source venv/bin/activate          # Linux
+# .\venv\Scripts\Activate.ps1     # Windows PowerShell
 pip install -r requirements.txt
-
-cp .env.example .env
-# edit .env if needed, in particular MANUALS_AGENT_URL, ORCHESTRATOR_OLLAMA_MODEL,
-# ORCHESTRATOR_NUM_CTX, and the LANGFUSE_* credentials
-```
-
-## Running locally
-
-You need **two services running in parallel** (plus `ollama serve`
-running separately), in two separate terminals:
-
-**Terminal 1 — Manuals Agent** (see `agents/README.md` for full setup):
-```bash
-cd agents
-uvicorn main:app --reload --port 8001
-```
-
-**Terminal 2 — Backend**:
-```bash
-cd backend
-source venv/bin/activate
+cp .env.example .env              # set ORCHESTRATOR_OLLAMA_MODEL and the LANGFUSE_* keys
 uvicorn app.main:app --reload --port 8000
 ```
 
-**Terminal 3 — LangFuse**
-```bash
-follow the instruction "../langfuse-local/README"
-```
+With the defaults, `MANUALS_DIR` points to `../data/manuals` and the DBs are
+created in `backend/data/`. The agents service (port 8001), the
+mock-backoffice (8003) and Langfuse (`../langfuse-local/README`) must be
+running.
 
-Test the non-streaming endpoint with curl:
-```bash
-curl -X POST http://localhost:8000/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "perché la macchina non parte", "machine_id": "MCH-0004"}'
-```
+## Trying the API with curl
 
-or via `http://localhost:8000/docs`.
-
-Test the streaming endpoint with `curl -N` (do **not** use Swagger for
-this one — it buffers the stream):
-```bash
-curl -N -X POST http://localhost:8000/v1/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"query": "perché la macchina non parte", "machine_id": "MCH-0004"}'
-```
-
-### Verifying the domain DB
-
-The seed logs one line per registered manual; eight lines means every PDF
-resolved to a machine. Zero lines plus a *Manuals directory not found*
-warning means the path or the volume mount is wrong, not the DB.
+`curl` does not keep cookies by itself: `-c` saves them to a file, `-b` sends
+them back.
 
 ```bash
-docker compose logs backend | grep -iE "seed|manual|Traceback"
+# login (password shared by every seeded user)
+curl -s -c elena.txt -X POST localhost:8000/v1/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"elena.fabbri@valgrande.example","password":"Arol2026!"}'
+
+curl -s -b elena.txt localhost:8000/v1/machines     # MCH-0001..0003 only
+
+# first turn: capture the thread id
+T=$(curl -s -b elena.txt -X POST localhost:8000/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"ciao","machine_id":"MCH-0001"}' \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)['thread_id'])")
+
+# streaming turn on the same thread (-N disables curl's buffering)
+curl -N -b elena.txt -X POST localhost:8000/v1/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d "{\"query\":\"come regolo la coppia di serraggio?\",\"machine_id\":\"MCH-0001\",\"thread_id\":\"$T\"}"
+
+curl -s -b elena.txt localhost:8000/v1/conversations/$T/messages
+curl -s -b elena.txt -X DELETE localhost:8000/v1/sessions/current
 ```
 
-The container image has no `sqlite3` CLI, so inspect the DB through
-Python. The join below is the useful one: it shows the whole fleet with
-its manual, and a `LEFT JOIN` makes a missing manual visible instead of
-hiding the row.
+Swagger UI (`http://localhost:8000/docs`) works too: log in with
+`POST /v1/sessions` and the browser keeps the cookie for the following calls.
+It buffers streams, so use `curl -N` for `/v1/chat/stream`.
+
+### Inspecting the domain DB
+
+The container has no `sqlite3` CLI; use Python. The `LEFT JOIN` makes a
+missing manual visible instead of hiding the row.
 
 ```bash
 docker compose exec -T backend python - <<'EOF'
 import sqlite3
 from app.config import settings
-con = sqlite3.connect(str(settings.DOMAIN_DB_PATH))
-for t in ("companies","users","machine_models","machines","manuals"):
+con = sqlite3.connect(settings.DOMAIN_DB_PATH)
+for t in ("companies","users","machine_models","machines","manuals","sessions","conversations"):
     print(f"{t:15s}", con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
 for r in con.execute("""
     SELECT m.id, m.serial_number, c.name, mm.model_code,
@@ -637,78 +542,77 @@ for r in con.execute("""
 EOF
 ```
 
-**Note on visibility**: the manual `logger.info(...)` step-by-step
-logging from iteration 2 was intentionally not carried over to the
-LangGraph version — Langfuse now replaces it, providing a persistent,
-navigable trace of each run. For quick ad-hoc inspection, a temporary
-debug print inside `handle()` / `handle_stream()` still works.
+## Environment variables
 
-## Environment variables (`.env`)
-
-| Variable                       | Description                                            | Example                  |
-|---------------------------------|-----------------------------------------------------------|---------------------------|
-| `MANUALS_AGENT_URL`             | Base URL of the Manuals Agent service                     | `http://localhost:8001`  |
-| `ORCHESTRATOR_LLM_PROVIDER`     | LLM provider used by the orchestrator                     | `ollama`                  |
-| `ORCHESTRATOR_OLLAMA_BASE_URL`  | Base URL of the Ollama server for the orchestrator        | `http://localhost:11434` |
-| `ORCHESTRATOR_OLLAMA_MODEL`     | Model used for routing/tool-calling (must support it)     | `gpt-oss:20b`             |
-| `ORCHESTRATOR_NUM_CTX`          | Context window fixed explicitly (see `config.py` notes)   | `4096`                    |
-| `ORCHESTRATOR_MAX_ITERATIONS`   | Max reason/act/observe cycles before giving up             | `5`                       |
-| `LANGFUSE_PUBLIC_KEY`           | Langfuse public key (bridged into `os.environ`)           | `pk-lf-...`               |
-| `LANGFUSE_SECRET_KEY`           | Langfuse secret key (bridged into `os.environ`)           | `sk-lf-...`               |
-| `LANGFUSE_HOST`                 | Base URL of the self-hosted Langfuse instance             | `http://localhost:3000`  |
-| `CHECKPOINT_DB_PATH`            | Path to the SQLite file holding conversation checkpoints  | `data/checkpoints.sqlite` |
-| `DOMAIN_DB_PATH`                | Path to the SQLite file holding the fleet domain DB       | `data/domain.db`          |
-| `MANUALS_DIR`                   | Directory scanned for manual PDFs at seed time            | `data/manuals`            |
+| Variable                       | Description                                              | Local default / Docker value |
+|--------------------------------|----------------------------------------------------------|------------------------------|
+| `AGENTS_SERVICE_URL`           | Base URL of the agents service (all three agents)        | `http://localhost:8001` / `http://agents:8001` |
+| `ORCHESTRATOR_LLM_PROVIDER`    | Only `ollama` is implemented                             | `ollama` |
+| `ORCHESTRATOR_OLLAMA_BASE_URL` | Ollama server used by the orchestrator                   | `http://localhost:11434` / `http://host.docker.internal:11434` |
+| `ORCHESTRATOR_OLLAMA_MODEL`    | Tool-calling model — **required**                        | `gpt-oss:20b` |
+| `ORCHESTRATOR_NUM_CTX`         | Context window, fixed explicitly                         | `4096` |
+| `ORCHESTRATOR_MAX_ITERATIONS`  | Max agent->tools round trips per turn                    | `5` |
+| `LANGFUSE_PUBLIC_KEY`          | Langfuse public key — **required**                       | `pk-lf-...` |
+| `LANGFUSE_SECRET_KEY`          | Langfuse secret key — **required**                       | `sk-lf-...` |
+| `LANGFUSE_HOST`                | Langfuse instance                                        | `http://localhost:3000` / `http://langfuse-web:3000` |
+| `SESSION_COOKIE_SECURE`        | Mark the session cookie `Secure` (HTTPS only)            | `false` (set `true` behind HTTPS) |
+| `CHECKPOINT_DB_PATH`           | SQLite file with conversation checkpoints                | `backend/data/checkpoints.sqlite` |
+| `DOMAIN_DB_PATH`               | SQLite file with the domain DB                           | `backend/data/domain.sqlite` |
+| `MANUALS_DIR`                  | Directory scanned for manual PDFs at startup             | `<repo>/data/manuals` / `/data/manuals` |
 
 ## Docker notes
 
-- **Mount `data/` as a volume.** Both SQLite files and the manual PDFs
-  live there; without a volume the DB is recreated on every container
-  rebuild, and the manuals are baked into the image (so adding one
-  requires a rebuild).
-- **`create_all` does not migrate.** It creates missing tables and leaves
-  existing ones untouched, so a schema change requires deleting the
-  domain DB file — never the checkpoint DB, which is unrelated.
-- **The image copies the source in.** Editing a file on the host without
-  `docker compose up -d --build backend` leaves the old code running; if
-  a change seems not to take effect, check the routes the app actually
-  declares with `curl -s localhost:8000/openapi.json`.
+- **`./backend` is bind-mounted on `/app`**, so code changes are live on disk,
+  but `uvicorn` runs without `--reload`: after editing, run
+  `docker compose restart backend`. Rebuild (`--build`) only when
+  `requirements.txt` or the Dockerfile change.
+- **`restart` does not re-read `environment:`**; after changing the compose
+  file use `docker compose up -d --force-recreate backend`.
+- **Both SQLite files live in `backend/data/`** (persisted by the bind mount).
+  With WAL, the `-wal` and `-shm` side files are normal; do not delete them
+  while the backend runs.
+- **`create_all` does not migrate.** It creates missing tables and never
+  alters existing ones: after a schema change delete `domain.sqlite`. Delete
+  `checkpoints.sqlite` too if the old conversations should go, since threads
+  without a `conversations` row answer `404`.
+- **`data/manuals` at the root**: if Docker created it before you did (a bind
+  mount source that does not exist is created by the daemon), it belongs to
+  `root`; fix it with `sudo chown -R "$USER":"$USER" data`.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---------|--------------|
+| `Manual ingest complete: 0 new manual(s)` with no warning | `MANUALS_DIR` exists but is empty: the PDFs are not in `<repo>/data/manuals` |
+| `Manuals directory … not found` | `MANUALS_DIR` wrong or the volume not mounted |
+| Chat event `error`: *Could not reach Manuals agent* | `AGENTS_SERVICE_URL` wrong, or the agents container not healthy |
+| Manuals answers say "not found", `sources` empty | The agents' Chroma index was never built (agents README, step 9) |
+| Agents `500`, `chromadb … Error finding id` | Ingestion ran while the agents server was up: `docker compose restart agents` |
+| `401` right after logging in with curl | Missing `-b <file>`, or a different cookie file than the one used at login |
+| `422` on `thread_id` | Not a full UUID (5 groups) — often a truncated copy-paste or an unescaped `$` in the shell |
 
 ## Known limitations / next steps
 
-- **`MachineOut` exposes `model_id`, not a readable model name** — a
-  client showing `MDL-100` to an operator is not useful. Either a
-  separate models endpoint (two calls, clean separation) or denormalizing
-  `model_code`/`description` into `MachineOut` via a join.
-- **`page_count` is not available** on manuals; it would require parsing
-  each PDF at ingest time and a new column.
-- **Checkpointing is durable but single-node** — the graph is compiled
-  with an `AsyncSqliteSaver` writing to a SQLite file, so conversations
-  survive a process restart. It is a local file, so it is not shared
-  across multiple backend processes; a multi-node deployment would use
-  `AsyncPostgresSaver` (out of scope for the thesis demo). Note that in a
-  container the file must be on a mounted volume to survive an image
-  rebuild.
-- **Same model used for both the orchestrator and the Manuals Agent**
-  (`gpt-oss:20b`) — chosen for simplicity/VRAM-safety on 16GB hardware
-  (no model-swapping), at the cost of using a heavier-than-necessary
-  model for the lightweight routing task. Not yet benchmarked against a
-  smaller dedicated orchestrator model on equal footing to isolate
-  whether perceived slowdowns come from the model choice or the framework
-  itself.
-- **No automated evaluation of routing quality** — nothing currently
-  measures whether the LLM's decision to stop (or keep calling tools)
-  was actually correct; relies entirely on the system prompt and the
-  model's own judgment. A `confidence`-based check or a separate judge
-  step are possible future additions.
-- **No authentication** on any endpoint yet. The history endpoint is
-  structured so an ownership check ("does the caller own this thread?")
-  can slot in between receiving the `session_id` and reading the data,
-  without touching the read or the projection. Binding conversations to
-  an authenticated user (for a "my conversations" list) additionally
-  needs a user→thread_id registry, which the checkpointer does not
-  provide.
-- **Single agent registered** (`search_manuals`). Real multi-agent
-  routing (IoT, Orders, Troubleshooting) is the next milestone — each
-  new agent needs one client in `app/clients/` and one `@tool` function
-  in `agent_registry.py`, nothing else.
+- **`visibility` is not enforced yet** (RBAC): a `commercial` user can ask
+  technical questions and a `technician` can reach commercial records. The
+  natural place is `prepare_turn` (which tools a user may use) and the tool
+  set bound per request.
+- **Grounding is prompt-based.** Rules in the system prompt reduce invented
+  content but a 20B model can still add unsupported details; the most
+  effective lever is a faithful `answer` from the agents, plus an automated
+  evaluation of answers against their sources, which does not exist yet.
+- **`sources` is untyped** (`list[dict]`): a discriminated union on `kind`
+  would document every variant in OpenAPI and validate it server-side.
+- **No conversation list endpoint** ("my conversations for this machine"),
+  though the `conversations` table already holds what it needs.
+- **No schema migrations** (Alembic): schema changes require deleting the DB.
+- **Manuals are a shared folder**: the target design (agents README, last
+  section) is upload through the backend, which then asks the agents to index
+  the file over HTTP.
+- **`MachineOut` exposes `model_id`, not a readable model name**; a join or a
+  models endpoint is needed.
+- **Checkpointing is single-node** (a local SQLite file); a multi-instance
+  deployment would use `AsyncPostgresSaver`.
+- **No rate limiting on login** and no CSRF token beyond `SameSite=Lax`.
+- **The manual file URL is relative** (`/v1/...`): behind the frontend's
+  nginx it works only if `/v1` is proxied to the backend.

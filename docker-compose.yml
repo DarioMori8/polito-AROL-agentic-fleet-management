@@ -62,7 +62,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MANUALS_AGENT_URL: http://agents:8001
+      AGENTS_SERVICE_URL: http://agents:8001   # service name on the compose network
+      MANUALS_DIR: /data/manuals               # where the shared volume is mounted below
       ORCHESTRATOR_LLM_PROVIDER: ollama
       ORCHESTRATOR_OLLAMA_BASE_URL: http://host.docker.internal:11434
       ORCHESTRATOR_OLLAMA_MODEL: ${ORCHESTRATOR_OLLAMA_MODEL:-gpt-oss:20b}

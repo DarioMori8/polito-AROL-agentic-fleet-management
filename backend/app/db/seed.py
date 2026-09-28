@@ -1,10 +1,11 @@
 import logging
 import re
-from pathlib import Path
-from app.config import settings
+from datetime import date
 
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.config import settings
 from app.db.engine import async_session_factory
 from app.db.models import (
     Company,
@@ -15,13 +16,9 @@ from app.db.models import (
     User,
     Visibility,
 )
+from app.security.passwords import hash_password
 
 logger = logging.getLogger(__name__)
-
-# Where the manual PDFs live. Move this to settings when the backend starts
-# owning document storage for real (upload endpoint instead of a folder).
-MANUALS_DIR = settings.MANUALS_DIR
-DOMAIN_DB_PATH = settings.DOMAIN_DB_PATH
 
 
 # The dataset convention: manuals/<serialNumber>_manual_<LANG>.pdf
@@ -34,7 +31,7 @@ DOMAIN_DB_PATH = settings.DOMAIN_DB_PATH
 MANUAL_FILENAME_RE = re.compile(r"^(?P<serial>.+?)_manual_(?P<lang>[A-Za-z]{2})\.pdf$")
 
 
-# Reference data
+# --- Reference data
 #
 # ALL of the rows below are transcribed from AROL_Q2_synthetic_fleet_dataset.xlsx,
 # the same workbook the mock-backoffice serves to the agents service. This is not
@@ -43,6 +40,9 @@ MANUAL_FILENAME_RE = re.compile(r"^(?P<serial>.+?)_manual_(?P<lang>[A-Za-z]{2})\
 # disagree on who owns what, the backend resolves a tenant the backoffice does not
 # recognise, and manual citations land on the wrong machine — silently, with no
 # error anywhere. The workbook is the source of truth; this file must follow it.
+#
+# Table classes do NOT validate on construction: every value must already have
+# the column's Python type (a date, not "2016-06-14"), or the insert fails.
 
 
 def _fixture_companies() -> list[Company]:
@@ -234,81 +234,79 @@ def _fixture_machines() -> list[Machine]:
 
     Two columns here are cross-system identifiers and must not be improvised:
 
-    - company_id is the tenant the Docs Agent filters commercial records on. The
-      backend resolves it from machine_id before every docs call, so a wrong
-      pairing here does not raise: it quietly asks the backoffice for another
-      customer's quotes and orders.
+    - company_id is the tenant the Docs Agent filters commercial records on. A
+      wrong pairing here does not raise: it quietly lets a company see another
+      customer's machine, and asks the backoffice for the wrong records.
     - serial_number is what _ingest_manuals() below matches against the PDF
       filenames. The alphanumeric serials (A2055, A2064, A2132, A4344) belong to
       specific machines; swapping two of them links a manual to the wrong machine
       and every citation pointing at it resolves to the wrong row.
 
-    software_version is 'n/a' wherever the workbook leaves it empty — these are
+    software_version is None wherever the workbook leaves it empty — these are
     hardwired or line-integrated machines with no versioned software of their own.
     """
     return [
         Machine(id="MCH-0001", company_id="CMP-001", model_id="MDL-100",
-                serial_number="15610", delivery_date="2016-06-14",
+                serial_number="15610", delivery_date=date(2016, 6, 14),
                 plant_location="Novara Plant 1 - Bottling Line 3",
                 configuration_profile="Twin chute / 20 heads / 40000 bph / "
                                       "400V-60Hz / PK 314 chuck",
                 plc_family=PlcFamily.LINE_PLC_INTEGRATED,
-                software_version="n/a"),
+                software_version=None),
         Machine(id="MCH-0002", company_id="CMP-001", model_id="MDL-200",
-                serial_number="17203", delivery_date="2018-10-02",
+                serial_number="17203", delivery_date=date(2018, 10, 2),
                 plant_location="Novara Plant 1 - Bottling Line 5",
                 configuration_profile="IES Light / 6 heads / 10000 bph / "
                                       "480V-60Hz / UV cap steriliser",
                 plc_family=PlcFamily.LINE_PLC_INTEGRATED,
-                software_version="n/a"),
+                software_version=None),
         Machine(id="MCH-0003", company_id="CMP-001", model_id="MDL-200",
-                serial_number="17579", delivery_date="2019-12-05",
+                serial_number="17579", delivery_date=date(2019, 12, 5),
                 plant_location="Alessandria Plant 2 - Bottling Line 1",
                 configuration_profile="IES Light / 6 heads / 6000 bph / 220V-50Hz",
                 plc_family=PlcFamily.LINE_PLC_INTEGRATED,
-                software_version="n/a"),
+                software_version=None),
         Machine(id="MCH-0004", company_id="CMP-003", model_id="MDL-300",
-                serial_number="17478", delivery_date="2019-07-22",
+                serial_number="17478", delivery_date=date(2019, 7, 22),
                 plant_location="Zaragoza Plant 1 - Filling Suite B",
                 configuration_profile="IES / 3 heads / 4500 bph / 220V-60Hz / "
                                       "SIMATIC HMI + PROFIBUS",
                 plc_family=PlcFamily.SIEMENS_SIMATIC_S7,
                 software_version="2.3.1"),
         Machine(id="MCH-0005", company_id="CMP-003", model_id="MDL-400",
-                serial_number="A4344", delivery_date="2018-05-30",
+                serial_number="A4344", delivery_date=date(2018, 5, 30),
                 plant_location="Zaragoza Plant 1 - Filling Suite A",
                 configuration_profile="Single head / 410 mm star-wheel / "
                                       "1200 bph / 480V-60Hz",
                 plc_family=PlcFamily.LINE_PLC_INTEGRATED,
-                software_version="n/a"),
+                software_version=None),
         Machine(id="MCH-0006", company_id="CMP-004", model_id="MDL-500",
-                serial_number="A2064", delivery_date="2007-09-18",
+                serial_number="A2064", delivery_date=date(2007, 9, 18),
                 plant_location="Glasgow Plant 1 - Line 2",
                 configuration_profile="Single head turret / 3000 bph / "
                                       "380V-50Hz / PET 500 ml",
                 plc_family=PlcFamily.HARDWIRED_CONTROL_PANEL,
-                software_version="n/a"),
+                software_version=None),
         Machine(id="MCH-0007", company_id="CMP-002", model_id="MDL-600",
-                serial_number="A2055", delivery_date="2007-11-06",
+                serial_number="A2055", delivery_date=date(2007, 11, 6),
                 plant_location="Saintes Plant 1 - Bottling Hall A",
                 configuration_profile="Single head turret / 3000 bph / "
                                       "380V-50Hz / aluminium cap, glass 500 ml",
                 plc_family=PlcFamily.HARDWIRED_CONTROL_PANEL,
-                software_version="n/a"),
+                software_version=None),
         Machine(id="MCH-0008", company_id="CMP-002", model_id="MDL-600",
-                serial_number="A2132", delivery_date="2007-11-06",
+                serial_number="A2132", delivery_date=date(2007, 11, 6),
                 plant_location="Saintes Plant 1 - Bottling Hall B",
                 configuration_profile="Single head turret / 3000 bph / "
                                       "380V-50Hz / pressure cap 33x60, glass",
                 plc_family=PlcFamily.HARDWIRED_CONTROL_PANEL,
-                software_version="n/a"),
+                software_version=None),
     ]
 
 
-# Manual
+# --- Manuals
 
-
-async def _ingest_manuals(session) -> int:
+async def _ingest_manuals(session: AsyncSession) -> int:
     """
     Scan MANUALS_DIR and register one Manual row per PDF, resolving the owning
     machine through the serial number in the filename.
@@ -316,18 +314,21 @@ async def _ingest_manuals(session) -> int:
     Idempotent per file, not per run: a machine that already has a manual is
     skipped, so dropping a new PDF in the folder and restarting picks it up
     even though the rest of the seed is already done.
+
+    These queries are deliberately NOT tenant-scoped: the seed is a system
+    process acting for every company, not a user.
     """
-    if not MANUALS_DIR.is_dir():
-        logger.warning("Manuals directory %s not found, skipping manual ingest.",
-                       MANUALS_DIR)
+    manuals_dir = settings.MANUALS_DIR
+    if not manuals_dir.is_dir():
+        logger.warning("Manuals directory %s not found, skipping manual ingest.", manuals_dir)
         return 0
 
     ingested = 0
-    for pdf_path in sorted(MANUALS_DIR.glob("*.pdf")):
+    for pdf_path in sorted(manuals_dir.glob("*.pdf")):
         match = MANUAL_FILENAME_RE.match(pdf_path.name)
         if match is None:
-            logger.warning("Filename %s does not follow "
-                           "<serial>_manual_<LANG>.pdf, skipped.", pdf_path.name)
+            logger.warning("Filename %s does not follow <serial>_manual_<LANG>.pdf, skipped.",
+                           pdf_path.name)
             continue
 
         serial = match.group("serial")
@@ -335,15 +336,14 @@ async def _ingest_manuals(session) -> int:
 
         machine = (
             await session.exec(select(Machine).where(Machine.serial_number == serial))
-        ).first()
+        ).one_or_none()
         if machine is None:
-            logger.warning("No machine with serial %s (file %s), skipped.",
-                           serial, pdf_path.name)
+            logger.warning("No machine with serial %s (file %s), skipped.", serial, pdf_path.name)
             continue
 
         already = (
             await session.exec(select(Manual).where(Manual.machine_id == machine.id))
-        ).first()
+        ).one_or_none()
         if already is not None:
             logger.debug("Machine %s already has a manual, skipped.", machine.id)
             continue
@@ -365,12 +365,40 @@ async def _ingest_manuals(session) -> int:
     return ingested
 
 
+# --- Credentials
+
+# Shared development password for every seeded user. Never a production value.
+DEV_PASSWORD = "Arol2026!"
+
+
+async def _seed_credentials(session: AsyncSession) -> int:
+    """
+    Give every user still missing a password the shared development one.
+
+    Users that already have a hash are left alone, so a password changed at
+    runtime survives a restart.
+    """
+    users = (
+        await session.exec(select(User).where(User.password_hash.is_(None)))
+    ).all()
+
+    for user in users:
+        user.password_hash, user.salt = hash_password(DEV_PASSWORD)
+        session.add(user)
+        logger.debug("Password provisioned for %s.", user.email)
+
+    await session.commit()
+    return len(users)
+
+
+# --- Entry point
+
 async def seed_data() -> None:
     """
     Populate the domain DB, idempotently. Safe to call on every startup.
 
-    Reference data is inserted only on an empty DB. Manuals are reconciled on
-    every run, so the folder stays the source of truth for the documentation.
+    Reference data is inserted only on an empty DB. Credentials and manuals
+    are reconciled on every run.
 
     NOTE: "only on an empty DB" means a database seeded from an earlier, wrong
     set of fixtures is never corrected by restarting — the guard below sees rows
@@ -383,8 +411,8 @@ async def seed_data() -> None:
         if already_seeded:
             logger.info("Reference data already present, skipping fixtures.")
         else:
-            # Insertion order follows the FK graph: a row can only be written
-            # once the rows it points at exist.
+            # Two commits in FK order: parents (companies, models) before the
+            # rows that reference them (users, machines).
             companies = _fixture_companies()
             models_ = _fixture_machine_models()
             session.add_all(companies)
@@ -399,6 +427,9 @@ async def seed_data() -> None:
 
             logger.info("Seeded %d companies, %d users, %d models, %d machines.",
                         len(companies), len(users), len(models_), len(machines))
+
+        provisioned = await _seed_credentials(session)
+        logger.info("Credential seed complete: %d user(s) provisioned.", provisioned)
 
         ingested = await _ingest_manuals(session)
         logger.info("Manual ingest complete: %d new manual(s).", ingested)

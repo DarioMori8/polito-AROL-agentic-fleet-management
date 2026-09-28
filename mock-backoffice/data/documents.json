@@ -1,0 +1,52 @@
+[
+    {
+        "document_id": "DOC-2026-001",
+        "order_id": "ORD-2026-001",
+        "quote_id": "Q-2026-001",
+        "machine_id": "generic",
+        "type": "contract",
+        "title": "Supply contract A3279 - BevPack S.p.A.",
+        "upload_date": "2026-02-05",
+        "content": "Supply contract for capping machine model A3279, 8 stations. Payment: 30% on order, 40% on shipment, 30% on acceptance testing. Warranty: 24 months on mechanical parts, 12 months on electronic components. Delivery terms: FCA Canelli (AT)."
+    },
+    {
+        "document_id": "DOC-2026-002",
+        "order_id": "ORD-2026-001",
+        "quote_id": "Q-2026-001",
+        "machine_id": "generic",
+        "type": "attachment",
+        "title": "Technical configuration sheet - A3279",
+        "upload_date": "2026-02-05",
+        "content": "Ordered configuration: 8 capping stations, max speed 450 caps/minute, 400V three-phase power supply, compatible cap sizes 28-38mm, standard spare parts kit included (12 months)."
+    },
+    {
+        "document_id": "DOC-2026-003",
+        "order_id": "ORD-2026-001",
+        "quote_id": null,
+        "machine_id": "generic",
+        "type": "delivery_note",
+        "title": "Delivery note - ORD-2026-001",
+        "upload_date": "2026-04-10",
+        "content": "Delivery completed on 2026-04-10 at the BevPack S.p.A. plant. Acceptance test passed on site, no anomalies found. Received by: R. Moretti, production manager."
+    },
+    {
+        "document_id": "DOC-2026-004",
+        "order_id": "ORD-2026-002",
+        "quote_id": null,
+        "machine_id": "generic",
+        "type": "invoice",
+        "title": "Invoice - ORD-2026-002",
+        "upload_date": "2026-05-03",
+        "content": "Invoice for standard spare parts kit renewal, amount 4200.00 EUR, payment due 30 days from invoice date."
+    },
+    {
+        "document_id": "DOC-2026-005",
+        "order_id": "ORD-2026-003",
+        "quote_id": null,
+        "machine_id": "generic",
+        "type": "invoice",
+        "title": "Invoice - ORD-2026-003",
+        "upload_date": "2026-06-16",
+        "content": "Invoice for 2 replacement optical sensors, amount 1850.00 EUR, payment due 30 days from invoice date."
+    }
+]
