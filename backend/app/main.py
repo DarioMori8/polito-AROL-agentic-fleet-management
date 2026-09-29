@@ -1,40 +1,44 @@
 import logging
 from contextlib import asynccontextmanager
 
-
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from app.api.v1.chat import router as chat_router
-from app.resources.router import router as resources_router
 from fastapi.middleware.cors import CORSMiddleware
-from app.orchestrator.orchestrator import build_graph, LangGraphOrchestrator
-from app.db.engine import engine, create_db_and_tables, async_session_factory
+
+from app.api.v1.auth import router as auth_router
+from app.api.v1.chat import router as chat_router
+from app.db.engine import async_session_factory, create_db_and_tables, engine
 from app.db.seed import seed_data
+from app.orchestrator.orchestrator import LangGraphOrchestrator, build_graph
+from app.resources.router import router as resources_router
 
-
+# Configured before anything logs. Every module uses
+# logging.getLogger(__name__), so all app.* loggers inherit this setup.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
-    # --- startup 
+    # --- startup
     await create_db_and_tables()      # domain tables: created only if missing
-    await seed_data()               
+    await seed_data()
 
     async with build_graph() as graph:
         app.state.orchestrator = LangGraphOrchestrator(graph, async_session_factory)
         yield
-    # --- shutdown
+    # --- shutdown (the checkpointer is closed by the `async with` above)
 
     await engine.dispose()            # close pooled DB connections cleanly
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title="AROL Customer Platform API", lifespan=lifespan)
 
 
+# The browser only sends the session cookie cross-origin if the request is
+# made with credentials AND the origin is listed here explicitly: with
+# allow_credentials=True a wildcard origin is not allowed.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -50,13 +54,15 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
+    """Liveness probe used by the docker-compose healthcheck: no auth, no DB."""
     return {"status": "ok"}
 
 
+app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(resources_router)
 
-# Serve PDF manuals as static files.
-# The Manual.url field in the schema points to /static/manuals/<filename>.
-# In Docker this resolves to the shared ./data/manuals volume (read-only).
-app.mount("/static/manuals", StaticFiles(directory="/data/manuals"), name="manuals")
+# NOTE: there is intentionally no StaticFiles mount for the manuals. A static
+# mount would serve every PDF to anyone who guesses a filename, bypassing both
+# authentication and tenant scoping. PDFs are served only by
+# GET /v1/manuals/{manual_id}/file, behind the same checks as every resource.
