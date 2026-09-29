@@ -92,10 +92,11 @@ export function MachineProvider({ children }) {
         }
 
         // REAL WORLD MODE
+        // The arol_session cookie is sent automatically — no Authorization header needed.
         try {
-            const headers = { 'Content-Type': 'application/json' };
-            if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
-            const response = await fetch(`${API_BASE_URL}/v1/machines`, { headers });
+            const response = await fetch(`${API_BASE_URL}/v1/machines`, {
+                credentials: 'include',
+            });
             if (!response.ok) {
                 throw new Error(`HTTP Error: ${response.status}`);
             }

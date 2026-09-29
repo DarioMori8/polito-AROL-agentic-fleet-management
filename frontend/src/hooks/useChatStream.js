@@ -136,26 +136,21 @@ export default function useChatStream() {
         }
 
         // Real backend streaming
+        // The arol_session cookie is sent automatically by the browser (credentials: 'include').
+        // No Authorization header needed.
         try {
-            // Read JWT token from session (if authenticated)
-            let authHeader = {};
-            try {
-                const session = JSON.parse(sessionStorage.getItem('arol_auth_session') || 'null');
-                if (session?.token) authHeader = { 'Authorization': `Bearer ${session.token}` };
-            } catch { /* session parse failure is non-fatal */ }
-
             const response = await fetch(`${API_BASE_URL}/v1/chat/stream`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'text/event-stream',
-                    ...authHeader
                 },
+                credentials: 'include',
                 signal: abortController.signal,
                 body: JSON.stringify({
                     query: query,
                     machine_id: machineId,
-                    session_id: sessionId
+                    thread_id: sessionId   // backend field name is thread_id
                 }),
             });
 
@@ -228,9 +223,9 @@ export default function useChatStream() {
                     // Handle event types matching our FastAPI LangGraph orchestrator contract
                     switch (eventType) {
                         case 'start':
-                            // Backend sends session_id from the very first event
-                            if (parsedData.session_id) {
-                                currentSessionId = parsedData.session_id;
+                            // Backend sends thread_id from the very first event
+                            if (parsedData.thread_id) {
+                                currentSessionId = parsedData.thread_id;
                                 if (onSessionCreated) onSessionCreated(currentSessionId);
                             }
                             break;
@@ -282,9 +277,9 @@ export default function useChatStream() {
                             break;
 
                         case 'done':
-                            // Final event — capture session_id for the next turn
-                            if (parsedData.session_id) {
-                                currentSessionId = parsedData.session_id;
+                            // Final event — capture thread_id for the next turn
+                            if (parsedData.thread_id) {
+                                currentSessionId = parsedData.thread_id;
                                 if (onSessionCreated) onSessionCreated(currentSessionId);
                             }
                             break;

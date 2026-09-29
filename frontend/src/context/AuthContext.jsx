@@ -6,51 +6,105 @@ export const AuthContext = createContext(null);
 const SESSION_KEY = 'arol_auth_session';
 
 /**
+ * Maps the backend UserOut schema to our internal session shape.
+ * Backend: { id, company_id, first_name, last_name, email, job_title, visibility }
+ * Internal: { user_id, company_id, email, first_name, last_name, job_title, visibility }
+ */
+function mapUserOut(data) {
+    return {
+        user_id:    data.id,            // backend calls it "id"
+        company_id: data.company_id,
+        email:      data.email,
+        first_name: data.first_name,
+        last_name:  data.last_name,
+        job_title:  data.job_title,
+        visibility: data.visibility,
+        // note: company_name is not exposed by the backend UserOut schema
+    };
+}
+
+/**
  * AuthProvider
  *
  * Manages the full authentication lifecycle:
- *   - Session persistence via sessionStorage
+ *   - Session persistence (mock: sessionStorage / real: httpOnly cookie)
  *   - login(email, password) — mock today, ready for real API
- *   - logout() — clears session and redirects
- *   - Exposes user = { user_id, company_id, email, first_name, last_name, token }
+ *   - logout() — invalidates server session + clears local state
+ *   - Exposes user = { user_id, company_id, email, first_name, last_name, job_title, visibility }
  *
- * SWITCHING TO REAL AUTH:
- *   Replace the mock block in `login()` with:
- *     const response = await fetch('/v1/auth/login', {
- *       method: 'POST',
- *       headers: { 'Content-Type': 'application/json' },
- *       body: JSON.stringify({ email, password })
- *     });
- *     if (!response.ok) throw new Error('Credenziali non valide.');
- *     const userData = await response.json(); // { token, user_id, company_id, ... }
+ * Auth strategy (REAL MODE):
+ *   Backend uses server-side sessions with an httpOnly cookie (`arol_session`).
+ *   The browser sends the cookie automatically on every same-origin request —
+ *   NO Authorization header is needed anywhere in the app.
+ *
+ *   Endpoints:
+ *     POST   /v1/sessions          → login  (sets cookie, returns UserOut)
+ *     GET    /v1/sessions/current  → whoami (validates cookie, returns UserOut)
+ *     DELETE /v1/sessions/current  → logout (clears cookie server-side)
  */
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
-    const [authLoading, setAuthLoading] = useState(true); // true while reading sessionStorage
+    const [authLoading, setAuthLoading] = useState(true); // true while session is being resolved
 
     const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000';
     const USE_MOCK = import.meta.env?.VITE_USE_MOCK === 'true';
 
-    // On mount: restore session from sessionStorage (survives page refresh)
+    // ── MOUNT: resolve any existing session ─────────────────────────────────────
     useEffect(() => {
-        try {
-            const saved = sessionStorage.getItem(SESSION_KEY);
-            if (saved) {
-                setUser(JSON.parse(saved));
+        if (USE_MOCK) {
+            // Mock: the "cookie" is simulated via sessionStorage
+            try {
+                const saved = sessionStorage.getItem(SESSION_KEY);
+                if (saved) setUser(JSON.parse(saved));
+            } catch (e) {
+                console.warn('AuthContext: failed to restore mock session:', e);
             }
-        } catch (e) {
-            console.warn('AuthContext: failed to restore session from sessionStorage:', e);
-        } finally {
             setAuthLoading(false);
+            return;
         }
+
+        // Real: validate whether the browser cookie is still active.
+        // sessionStorage is used as a fast display cache to avoid UI flash on refresh,
+        // but the server is always the source of truth.
+        const cached = (() => {
+            try {
+                const s = sessionStorage.getItem(SESSION_KEY);
+                return s ? JSON.parse(s) : null;
+            } catch { return null; }
+        })();
+        if (cached) setUser(cached); // instant restore from cache (no flash)
+
+        fetch(`${API_BASE_URL}/v1/sessions/current`, {
+            credentials: 'include', // send the arol_session cookie
+        })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data) {
+                    const sessionData = mapUserOut(data);
+                    sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+                    setUser(sessionData);
+                } else {
+                    // Cookie expired or invalid → clear stale cache
+                    sessionStorage.removeItem(SESSION_KEY);
+                    setUser(null);
+                }
+            })
+            .catch(() => {
+                // Network error: keep the cached user so the app works offline,
+                // but do not block the UI.
+                console.warn('AuthContext: could not validate session with server.');
+            })
+            .finally(() => setAuthLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // ── LOGIN ────────────────────────────────────────────────────────────────────
     /**
      * Attempt login with email + password.
      * Returns { ok: true } on success, { ok: false, message: string } on failure.
      */
     const login = useCallback(async (email, password) => {
-        // ── MOCK MODE ────────────────────────────────────────────────────────
+        // ── MOCK MODE ─────────────────────────────────────────────────────────────
         if (USE_MOCK) {
             await new Promise(resolve => setTimeout(resolve, 500)); // simulate network
             const found = MOCK_USERS.find(
@@ -60,25 +114,28 @@ export function AuthProvider({ children }) {
                 return { ok: false, message: 'Email o password non corretti.' };
             }
             const sessionData = {
-                user_id:    found.user_id,
-                company_id: found.company_id,
+                user_id:      found.user_id,
+                company_id:   found.company_id,
                 company_name: found.company_name,
-                email:      found.email,
-                first_name: found.first_name,
-                last_name:  found.last_name,
-                visibility: found.visibility,
-                token:      found.token
+                email:        found.email,
+                first_name:   found.first_name,
+                last_name:    found.last_name,
+                visibility:   found.visibility,
+                token:        found.token
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
             setUser(sessionData);
             return { ok: true };
         }
 
-        // ── REAL MODE ─────────────────────────────────────────────────────────
+        // ── REAL MODE ─────────────────────────────────────────────────────────────
+        // POST /v1/sessions — the server sets the arol_session cookie on 201 Created.
+        // The response body is UserOut: no token field, no company_name.
         try {
-            const response = await fetch(`${API_BASE_URL}/v1/auth/login`, {
+            const response = await fetch(`${API_BASE_URL}/v1/sessions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include', // required to receive the Set-Cookie header cross-origin
                 body: JSON.stringify({ email: email.trim(), password })
             });
             if (!response.ok) {
@@ -86,17 +143,8 @@ export function AuthProvider({ children }) {
                 return { ok: false, message: errData.detail || `Errore ${response.status}` };
             }
             const data = await response.json();
-            // Expected: { token, user_id, company_id, company_name, email, first_name, last_name, visibility }
-            const sessionData = {
-                user_id:      data.user_id,
-                company_id:   data.company_id,
-                company_name: data.company_name,
-                email:        data.email,
-                first_name:   data.first_name,
-                last_name:    data.last_name,
-                visibility:   data.visibility,
-                token:        data.token
-            };
+            const sessionData = mapUserOut(data);
+            // Cache user info for fast restore on refresh (the cookie is the real token)
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
             setUser(sessionData);
             return { ok: true };
@@ -106,18 +154,33 @@ export function AuthProvider({ children }) {
         }
     }, [API_BASE_URL, USE_MOCK]);
 
+    // ── LOGOUT ───────────────────────────────────────────────────────────────────
     /**
-     * Clears the current session. Navigation to /login is handled by the caller
-     * (ProtectedRoute / FleetView) to avoid coupling AuthContext to the router.
+     * Invalidates the server session (DELETE /v1/sessions/current) then clears
+     * all local state. Navigation to /login is handled by the caller to avoid
+     * coupling AuthContext to the router.
+     *
+     * Made async so callers can `await logout()` before navigating.
      */
-    const logout = useCallback(() => {
+    const logout = useCallback(async () => {
+        if (!USE_MOCK) {
+            try {
+                await fetch(`${API_BASE_URL}/v1/sessions/current`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                });
+            } catch {
+                // Best-effort: even if the server call fails, clear local state
+                // so the user is not stuck in a broken authenticated UI.
+            }
+        }
+        // Clear local caches that could leak data between users
         sessionStorage.removeItem(SESSION_KEY);
-        // Also clear any cached machine/fleet data that could leak between users
         sessionStorage.removeItem('arol_cached_fleet');
         sessionStorage.removeItem('arol_active_machine');
         sessionStorage.removeItem('arol_active_manuals');
         setUser(null);
-    }, []);
+    }, [API_BASE_URL, USE_MOCK]);
 
     const isAuthenticated = !!user;
 
