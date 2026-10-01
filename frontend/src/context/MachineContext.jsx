@@ -160,8 +160,8 @@ export function MachineProvider({ children }) {
         try {
             // Parallel fetch execution to optimize latency and bandwidth
             const [machineRes, manualsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/v1/machines/${id}`),
-                fetch(`${API_BASE_URL}/v1/machines/${id}/manual`)
+                fetch(`${API_BASE_URL}/v1/machines/${id}`, { credentials: 'include' }),
+                fetch(`${API_BASE_URL}/v1/machines/${id}/manual`, { credentials: 'include' })
             ]);
 
             if (!machineRes.ok) {
