@@ -16,7 +16,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.config import settings
 from app.db.models import Conversation, User
-from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, HistoryMessage, MessageRole
+from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, Denial, HistoryMessage, MessageRole
 from app.orchestrator.agent_registry import AGENT_TOOLS
 from app.orchestrator.base import (
     ConversationNotFoundError,
@@ -88,6 +88,14 @@ Binding rules:
   empty; there the request was too vague to call one at all.
 - If a tool's result includes a low confidence value, consider whether
   another source is needed before answering confidently.
+- Access control: the user may not be allowed to see every kind of data.
+  Do NOT try to guess what the user can see: when a question needs a tool,
+  call it; access is checked by the system. If a tool result contains
+  "denied", tell the user clearly, in one or two sentences, that this
+  information is outside their access profile. Do not try another tool to
+  obtain the same information, do not answer it from general knowledge, and
+  do not suggest it simply does not exist. If the question also had a part
+  that was answered, answer that part normally.
 - Every conversation is about one specific machine, already selected by
   the system: the tools are automatically scoped to it. Never ask the user
   which machine they mean. Knowing the machine does not tell you what is
@@ -210,6 +218,19 @@ def _current_turn(messages: list[BaseMessage]) -> list[BaseMessage]:
     return messages
 
 
+def _denial_of(msg: BaseMessage) -> Denial | None:
+    """The access denial carried by a tool result, if any."""
+    if isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict):
+        denied = msg.artifact.get("denied")
+        if isinstance(denied, dict):
+            return Denial(tool=msg.name or "", **denied)
+    return None
+
+
+def _extract_denials(messages: list[BaseMessage]) -> list[Denial]:
+    return [d for msg in messages if (d := _denial_of(msg)) is not None]
+
+
 def _extract_sources(messages: list[BaseMessage]) -> list[dict]:
     sources: list[dict] = []
     for msg in messages:
@@ -228,6 +249,7 @@ def _project_messages(messages: list[BaseMessage]) -> list[HistoryMessage]:
     # The "drawer": sources seen in this turn, waiting for the answer that
     # closes it.
     pending_sources: list[dict] = []
+    pending_denied: list[Denial] = []
 
     for msg in messages:
         if isinstance(msg, HumanMessage):
@@ -237,6 +259,8 @@ def _project_messages(messages: list[BaseMessage]) -> list[HistoryMessage]:
             # Sources live in the tool artifact, not in the answer.
             if isinstance(msg.artifact, dict):
                 pending_sources.extend(normalize_artifact(msg.artifact))
+            if (denial := _denial_of(msg)) is not None:
+                pending_denied.append(denial)
 
         elif isinstance(msg, AIMessage):
             # No text = the "decide to call a tool" step: mechanics, not
@@ -247,8 +271,10 @@ def _project_messages(messages: list[BaseMessage]) -> list[HistoryMessage]:
                 role=MessageRole.ASSISTANT,
                 content=msg.content,
                 sources=_dedupe(pending_sources),
+                denied=pending_denied,
             ))
             pending_sources = []
+            pending_denied = []
 
     return projected
 
@@ -305,6 +331,7 @@ class LangGraphOrchestrator(Orchestrator):
             user_id=user.id,
             company_id=user.company_id,
             machine_id=machine.id,
+            visibility=user.visibility,
             is_new=is_new,
         )
 
@@ -313,12 +340,13 @@ class LangGraphOrchestrator(Orchestrator):
             # Each agent->tools round trip executes two nodes.
             "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1,
             "callbacks": [_langfuse_handler],
-            # thread_id selects the checkpoint; company_id and machine_id are
-            # read by the tools and never exposed to the model.
+            # thread_id selects the checkpoint; company_id, machine_id and
+            # visibility are read by the tools and never exposed to the model.
             "configurable": {
                 "thread_id": str(context.thread_id),
                 "company_id": context.company_id,
                 "machine_id": context.machine_id,
+                "visibility": context.visibility.value,
             },
             # Groups traces by user and conversation in Langfuse.
             "metadata": {
@@ -335,16 +363,18 @@ class LangGraphOrchestrator(Orchestrator):
             config=self._run_config(context),
         )
         messages = result["messages"]
+        turn = _current_turn(messages)
         return ChatResponse(
             answer=messages[-1].content or "",
-            sources=_extract_sources(_current_turn(messages)),
+            sources=_extract_sources(turn),
+            denied=_extract_denials(turn),
             thread_id=context.thread_id,
         )
 
     async def handle_stream(self, context: TurnContext, query: str) -> AsyncIterator[dict]:
         """
         Streaming variant of handle(). Yields semantic events as the graph
-        runs: start / thinking / token / status / error / sources / done.
+        runs: start / thinking / token / status / denied / error / sources / done.
         Serializing them into SSE is the endpoint's job: this method stays
         transport-agnostic.
         """
@@ -388,6 +418,10 @@ class LangGraphOrchestrator(Orchestrator):
                                     "message": f"Consulting {tc['name']}...",
                                 }
                             # A tool finished: read its structured artifact.
+                            # An access denial: emitted by code, so the
+                            # client learns about it deterministically.
+                            if (denial := _denial_of(msg)) is not None:
+                                yield {"type": "denied", **denial.model_dump()}
                             if isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict):
                                 if "error" in msg.artifact:
                                     yield {

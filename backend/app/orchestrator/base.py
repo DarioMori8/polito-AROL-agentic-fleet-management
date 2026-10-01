@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import AsyncIterator
 from uuid import UUID
 
-from app.db.models import User
+from app.db.models import User, Visibility
 from app.models.chat import ChatRequest, ChatResponse, ConversationHistory
 
 
@@ -30,6 +30,9 @@ class TurnContext:
     user_id: str
     company_id: str
     machine_id: str
+    # Read from the DB on every turn (via the authenticated user), so a change
+    # of role applies from the next message.
+    visibility: Visibility
     is_new: bool          # True on the first turn of a new conversation
 
 
