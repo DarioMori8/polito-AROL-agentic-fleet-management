@@ -13,14 +13,17 @@ import { useAuth } from '../../context/AuthContext';
  *   <Route path="/" element={<ProtectedRoute><FleetView /></ProtectedRoute>} />
  */
 export default function ProtectedRoute({ children }) {
-    const { isAuthenticated, authLoading } = useAuth();
+    const { isAuthenticated, authLoading, user } = useAuth();
     const location = useLocation();
 
     // While sessionStorage is being read on first mount, render nothing to
     // avoid a flash-redirect to /login for users with a valid session.
     if (authLoading) return null;
 
-    if (!isAuthenticated) {
+    // Guest user (is_guest: true) are NOT allowed into protected routes (fleet view, scanner).
+    // They can only access /workspace/:id (with restricted functionalities)
+
+    if (!isAuthenticated || user?.is_guest) {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
