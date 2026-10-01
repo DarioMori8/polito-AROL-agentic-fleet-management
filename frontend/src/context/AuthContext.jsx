@@ -12,12 +12,12 @@ const SESSION_KEY = 'arol_auth_session';
  */
 function mapUserOut(data) {
     return {
-        user_id:    data.id,            // backend calls it "id"
+        user_id: data.id,            // backend calls it "id"
         company_id: data.company_id,
-        email:      data.email,
+        email: data.email,
         first_name: data.first_name,
-        last_name:  data.last_name,
-        job_title:  data.job_title,
+        last_name: data.last_name,
+        job_title: data.job_title,
         visibility: data.visibility,
         // note: company_name is not exposed by the backend UserOut schema
     };
@@ -95,7 +95,7 @@ export function AuthProvider({ children }) {
                 console.warn('AuthContext: could not validate session with server.');
             })
             .finally(() => setAuthLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ── LOGIN ────────────────────────────────────────────────────────────────────
@@ -114,14 +114,14 @@ export function AuthProvider({ children }) {
                 return { ok: false, message: 'Email o password non corretti.' };
             }
             const sessionData = {
-                user_id:      found.user_id,
-                company_id:   found.company_id,
+                user_id: found.user_id,
+                company_id: found.company_id,
                 company_name: found.company_name,
-                email:        found.email,
-                first_name:   found.first_name,
-                last_name:    found.last_name,
-                visibility:   found.visibility,
-                token:        found.token
+                email: found.email,
+                first_name: found.first_name,
+                last_name: found.last_name,
+                visibility: found.visibility,
+                token: found.token
             };
             sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
             setUser(sessionData);
@@ -153,6 +153,28 @@ export function AuthProvider({ children }) {
             return { ok: false, message: 'Impossibile connettersi al server. Controlla la rete.' };
         }
     }, [API_BASE_URL, USE_MOCK]);
+
+    /**
+     * Login as guest user, with limited functionalities active in the application.
+     * Used to directly login by scanning a qr code on a machine.
+     * Will require a second login to unlock the chatbot and the fleet view.
+     */
+    const loginAsGuest = useCallback(async (guestToken) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/v1/sessions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ guest_token: guestToken })
+            });
+            if (!response.ok) return { ok: false }
+            const data = await response.json()
+            const sessionData = { ...mapUserOut(data), is_guest: true }
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData))
+            setUser(sessionData)
+            return { ok: true }
+        } catch { return { ok: false } }
+    }, [API_BASE_URL]);
 
     // ── LOGOUT ───────────────────────────────────────────────────────────────────
     /**
