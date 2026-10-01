@@ -176,11 +176,11 @@ export function AuthProvider({ children }) {
 
         // ── REAL MODE ─────────────────────────────────────────────────────────────
         try {
-            const response = await fetch(`${API_BASE_URL}/v1/sessions/guest`, {
+            const response = await fetch(`${API_BASE_URL}/v1/sessions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ guest_token: guestToken })
+                body: JSON.stringify({ email: "guest", password: guestToken })
             });
             if (!response.ok) return { ok: false }
             const data = await response.json()
