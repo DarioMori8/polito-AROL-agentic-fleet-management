@@ -5,6 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.db.engine import get_session
 from app.db.models import User
+from app.security.access import may_use_chat
 from app.security.session import SESSION_COOKIE_NAME, resolve_session
 
 
@@ -34,3 +35,20 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def get_chat_user(user: CurrentUser) -> User:
+    """
+    Authenticated AND allowed to use the assistant. Guests are rejected with
+    403: they are authenticated (so not 401), and the restriction is a known
+    property of their role, not a hidden resource (so not 404).
+    """
+    if not may_use_chat(user.visibility):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The assistant is not available to guest accounts",
+        )
+    return user
+
+
+ChatUser = Annotated[User, Depends(get_chat_user)]

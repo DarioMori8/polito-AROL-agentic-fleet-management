@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import CurrentUser
+from app.api.deps import ChatUser
 from app.models.chat import ChatRequest, ChatResponse, ConversationHistory
 from app.orchestrator.base import (
     ConversationNotFoundError,
@@ -32,7 +32,7 @@ OrchestratorDep = Annotated[Orchestrator, Depends(get_orchestrator)]
 
 
 async def _prepare_turn(
-    orchestrator: Orchestrator, user: CurrentUser, payload: ChatRequest
+    orchestrator: Orchestrator, user: ChatUser, payload: ChatRequest
 ) -> TurnContext:
     """
     Phase 1 of a turn: every check that can fail because of the REQUEST.
@@ -58,7 +58,7 @@ async def _prepare_turn(
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
-    payload: ChatRequest, user: CurrentUser, orchestrator: OrchestratorDep
+    payload: ChatRequest, user: ChatUser, orchestrator: OrchestratorDep
 ) -> ChatResponse:
     """Non-streaming variant: the whole answer in one response. Handy for curl and tests."""
     context = await _prepare_turn(orchestrator, user, payload)
@@ -82,7 +82,7 @@ def _sse_format(event: dict) -> str:
 
 @router.post("/chat/stream")
 async def chat_stream_endpoint(
-    payload: ChatRequest, user: CurrentUser, orchestrator: OrchestratorDep
+    payload: ChatRequest, user: ChatUser, orchestrator: OrchestratorDep
 ) -> StreamingResponse:
     """
     Streaming variant, as Server-Sent Events over POST.
@@ -117,7 +117,7 @@ async def chat_stream_endpoint(
 
 @router.get("/conversations/{thread_id}/messages", response_model=ConversationHistory)
 async def get_conversation_history(
-    thread_id: UUID, user: CurrentUser, orchestrator: OrchestratorDep
+    thread_id: UUID, user: ChatUser, orchestrator: OrchestratorDep
 ) -> ConversationHistory:
     # get_history returns None both when the thread does not exist and when it
     # belongs to another user: the two cases are deliberately the same 404.

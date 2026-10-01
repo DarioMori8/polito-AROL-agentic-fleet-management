@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
 from app.db.engine import async_session_factory
+from app.db.guest_accounts import mint_missing_guest_passwords
 from app.db.models import (
     Company,
     Machine,
@@ -128,6 +129,37 @@ def _fixture_users() -> list[User]:
         User(id="USR-019", company_id="CMP-005", first_name="Rui",
              last_name="Cardoso", email="rui.cardoso@cascais.example",
              job_title="Procurement Lead", visibility=Visibility.COMMERCIAL),
+    ]
+
+
+# Email domain of each company, as used by its users in the dataset.
+_COMPANY_EMAIL_DOMAINS = {
+    "CMP-001": "valgrande.example",
+    "CMP-002": "bruyere.example",
+    "CMP-003": "ebro.example",
+    "CMP-004": "kilbrannan.example",
+    "CMP-005": "cascais.example",
+}
+
+
+def _fixture_guest_users() -> list[User]:
+    """
+    One guest account per company. NOT in the dataset: added for the
+    plant-floor use case (someone at the machine, without an account, who
+    scans its QR code to read its manual). Same shape for every company;
+    visibility GUEST, which the access model limits to machine identity and
+    documentation, with no chat. Each one gets its own random password from
+    guest_accounts.py, never a shared one.
+
+    Ids use a separate USR-G prefix so they can never collide with the
+    dataset's USR-NNN rows.
+    """
+    return [
+        User(id=f"USR-G{company_id[-3:]}", company_id=company_id,
+             first_name="Guest", last_name=company_id,
+             email=f"guest@{domain}", job_title="Guest",
+             visibility=Visibility.GUEST)
+        for company_id, domain in _COMPANY_EMAIL_DOMAINS.items()
     ]
 
 
@@ -367,19 +399,27 @@ async def _ingest_manuals(session: AsyncSession) -> int:
 
 # --- Credentials
 
-# Shared development password for every seeded user. Never a production value.
+# Shared development password for every dataset user. Never a production
+# value. Guest accounts are excluded: each gets a random password of its own
+# (see guest_accounts.py).
 DEV_PASSWORD = "Arol2026!"
 
 
 async def _seed_credentials(session: AsyncSession) -> int:
     """
-    Give every user still missing a password the shared development one.
+    Give every non-guest user still missing a password the shared
+    development one.
 
     Users that already have a hash are left alone, so a password changed at
     runtime survives a restart.
     """
     users = (
-        await session.exec(select(User).where(User.password_hash.is_(None)))
+        await session.exec(
+            select(User).where(
+                User.password_hash.is_(None),
+                User.visibility != Visibility.GUEST,
+            )
+        )
     ).all()
 
     for user in users:
@@ -392,6 +432,20 @@ async def _seed_credentials(session: AsyncSession) -> int:
 
 
 # --- Entry point
+
+async def _seed_guest_users(session: AsyncSession) -> int:
+    """
+    Insert the guest accounts that are missing. Reconciled on every run (not
+    only on an empty DB), so adding a company to _COMPANY_EMAIL_DOMAINS is
+    enough to give it a guest. Its password is minted right after, by
+    mint_missing_guest_passwords().
+    """
+    existing = set((await session.exec(select(User.id))).all())
+    missing = [u for u in _fixture_guest_users() if u.id not in existing]
+    session.add_all(missing)
+    await session.commit()
+    return len(missing)
+
 
 async def seed_data() -> None:
     """
@@ -427,6 +481,12 @@ async def seed_data() -> None:
 
             logger.info("Seeded %d companies, %d users, %d models, %d machines.",
                         len(companies), len(users), len(models_), len(machines))
+
+        guests = await _seed_guest_users(session)
+        logger.info("Guest accounts: %d new.", guests)
+
+        minted = await mint_missing_guest_passwords(session)
+        logger.info("Guest passwords: %d minted.", minted)
 
         provisioned = await _seed_credentials(session)
         logger.info("Credential seed complete: %d user(s) provisioned.", provisioned)

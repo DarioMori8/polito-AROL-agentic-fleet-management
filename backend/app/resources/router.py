@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.deps import CurrentUser
 from app.db.engine import get_session
+from app.db.models import Manual
 from app.resources.repository import (
     DbMachineRepository,
     DbManualRepository,
@@ -144,7 +145,15 @@ async def download_manual(
     manual = await manual_repo.get(manual_id)
     if manual is None:
         raise HTTPException(status_code=404, detail=f"Manual '{manual_id}' not found")
+    return serve_manual_file(manual)
 
+
+def serve_manual_file(manual: Manual) -> FileResponse:
+    """
+    Stream a manual's PDF. Shared by the user route above and the guest route
+    (api/v1/guest.py): whoever calls it has ALREADY decided the caller may see
+    this manual — this function only turns the row into bytes.
+    """
     path = Path(manual.storage_path)
     if not path.is_file():
         # The row exists but the bytes don't: the DB and the disk disagree
@@ -153,11 +162,11 @@ async def download_manual(
         # The path goes to the log only, never to the client.
         logger.error(
             "Manual %s is registered but its file is missing at %s",
-            manual_id, path,
+            manual.id, path,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"File for manual '{manual_id}' is unavailable",
+            detail=f"File for manual '{manual.id}' is unavailable",
         )
 
     return FileResponse(

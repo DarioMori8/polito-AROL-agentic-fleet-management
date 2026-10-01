@@ -30,11 +30,13 @@ class DataDomain(str, Enum):
 #   full        -> everything
 #   technician  -> identity + operational
 #   commercial  -> identity + commercial
+#   guest       -> identity only (machines, models, manuals)
 # Identity data is visible at every level (for the user's own company).
 _ALLOWED_DOMAINS: dict[Visibility, frozenset[DataDomain]] = {
     Visibility.FULL: frozenset(DataDomain),
     Visibility.TECHNICIAN: frozenset({DataDomain.IDENTITY, DataDomain.OPERATIONAL}),
     Visibility.COMMERCIAL: frozenset({DataDomain.IDENTITY, DataDomain.COMMERCIAL}),
+    Visibility.GUEST: frozenset({DataDomain.IDENTITY}),
 }
 
 # Human-readable description of each domain, used in denial messages.
@@ -59,3 +61,14 @@ def is_allowed(visibility: Visibility | str | None, domain: DataDomain) -> bool:
 
 def denial_message(domain: DataDomain) -> str:
     return f"Access denied: {DOMAIN_DESCRIPTIONS[domain]} is outside your access profile."
+
+
+def may_use_chat(visibility: Visibility | str | None) -> bool:
+    """
+    Guests only read manuals: the assistant is closed to them entirely, not
+    just narrowed to the manuals tool. Fails closed like is_allowed().
+    """
+    try:
+        return Visibility(visibility) != Visibility.GUEST
+    except ValueError:
+        return False

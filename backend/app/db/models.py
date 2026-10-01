@@ -58,6 +58,9 @@ class Visibility(str, Enum):
     FULL = "full"
     TECHNICIAN = "technician"
     COMMERCIAL = "commercial"
+    # Not in the dataset: a shared per-company account for people on the
+    # plant floor who only need machine identity and documentation.
+    GUEST = "guest"
 
 
 class PlcFamily(str, Enum):
