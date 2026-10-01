@@ -29,11 +29,23 @@ class ChatRequest(BaseModel):
     thread_id: UUID | None = None
 
 
+class Denial(BaseModel):
+    """
+    A tool call refused by the access model in this turn. Produced by code,
+    not by the LLM: the client can show it as a distinct notice without
+    interpreting the answer text.
+    """
+    tool: str
+    domain: str
+    message: str
+
+
 class ChatResponse(BaseModel):
     answer: str
     # Untyped for now: to be replaced by a discriminated union on `kind`,
     # matching what normalize_artifact() produces.
     sources: list[dict] = []
+    denied: list[Denial] = []
     thread_id: UUID
 
 
@@ -48,6 +60,8 @@ class HistoryMessage(BaseModel):
     # Always present; empty for user messages and for citation-less answers.
     # (Pydantic copies mutable defaults per instance: [] is safe here.)
     sources: list[dict] = []
+    # Access denials that occurred in the turn this answer closes.
+    denied: list[Denial] = []
 
 
 class ConversationHistory(BaseModel):

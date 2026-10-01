@@ -21,6 +21,9 @@ On top of the loop:
   resolved server-side on every request.
 - **Multi-tenancy** — every read is scoped to the authenticated user's
   company; every conversation is owned by one user and pinned to one machine.
+- **Visibility-based access** — inside their company, a user reaches only
+  the data domains their `visibility` allows, enforced in code before any
+  agent is contacted (see *Access model*).
 
 Alongside the chat path, the backend owns a **domain database** holding the
 customer fleet — companies, users, machine models, machines, their manuals —
@@ -65,6 +68,7 @@ backend/
 │   │   ├── iot_client.py          # IoT Agent client
 │   │   └── exceptions.py          # AgentUnavailableError
 │   ├── security/
+│   │   ├── access.py              # Access model: visibility -> allowed data domains
 │   │   ├── passwords.py           # scrypt hashing / verification
 │   │   └── session.py             # authenticate, create/resolve/destroy session
 │   ├── db/
@@ -272,6 +276,40 @@ agents, which use the `contracts` package): `LoginRequest`/`UserOut`, and
   take `company_id` from `CurrentUser`: since every endpoint depends on a
   provider, every endpoint is authenticated without declaring it.
 
+## Access model
+
+Two independent checks, both required before any data is returned:
+
+1. **`company_id`** — the tenant boundary, never crossed. Resource queries
+   are scoped by it; agent calls receive it from the server.
+2. **`visibility`** — narrows *what kind* of data a user sees inside their
+   own company:
+
+| visibility   | Identity & documentation (`search_manuals`, machines, manuals) | Operational (`search_iot`) | Commercial (`search_docs`) |
+|--------------|:---:|:---:|:---:|
+| `full`       | yes | yes | yes |
+| `technician` | yes | yes | no  |
+| `commercial` | yes | no  | yes |
+
+The policy lives in one place, `app/security/access.py`. It is enforced
+**in code, never by the LLM**:
+
+- All tools stay visible to the model, which may call any of them. Each tool
+  checks its data domain against the user's `visibility` (injected by the
+  server through the `RunnableConfig`, like the tenant) **before** any HTTP
+  call: a call outside the profile never reaches the agent.
+- The refused tool returns an explicit denial, never an empty result (which
+  would read as "no data exists"). The model is instructed to tell the user
+  the information is outside their profile; independently of its wording,
+  the stream emits a `denied` event and the responses carry a `denied` list.
+- The check fails closed: a missing or unknown visibility allows nothing.
+- `visibility` is read from the DB on every turn, so a role change applies
+  from the next message. Tool results already in a thread's history are not
+  retroactively removed.
+- The enforcement point is the backend: it holds only if the agents service
+  and the mock-backoffice are reachable from the backend alone (see *Docker
+  notes*).
+
 ## Domain database
 
 A SQLite database (`DOMAIN_DB_PATH`) modelled on the AROL Q2 synthetic fleet
@@ -363,7 +401,9 @@ Non-streaming chat: runs the graph to completion and returns one JSON object.
 | `thread_id`  | `UUID \| null` | Omit on the first turn; send back the returned id to continue. The thread must belong to the user and to the same `machine_id`. |
 
 **Returns** — `ChatResponse`: `answer` (str), `sources` (list of objects with
-a `kind` discriminator, only from this turn, deduplicated), `thread_id` (UUID).
+a `kind` discriminator, only from this turn, deduplicated), `denied` (list of
+`{ tool, domain, message }`, the tool calls refused by the access model in
+this turn), `thread_id` (UUID).
 
 ```json
 {
@@ -392,6 +432,7 @@ frame `event: <type>\ndata: <json>\n\n`.
 | `thinking` | While the model reasons | `{ "type": "thinking", "text": "<chunk>" }` — show collapsed/greyed |
 | `status`   | When the model calls a tool | `{ "type": "status", "tool": "search_manuals", "message": "Consulting search_manuals..." }` |
 | `token`    | While the answer is generated | `{ "type": "token", "text": "<chunk>" }` — concatenate to rebuild the answer |
+| `denied`   | When a tool call is refused by the access model | `{ "type": "denied", "tool": "search_iot", "domain": "operational", "message": "..." }` — emitted by code, show as a distinct notice |
 | `error`    | Agent failure (recoverable) or graph failure (fatal) | `{ "type": "error", "recoverable": true\|false, "message": "..." }` — fatal errors carry a generic message; details go to the log |
 | `sources`  | Once, after the graph ends | `{ "type": "sources", "sources": [ ... ] }` |
 | `done`     | Once, last | `{ "type": "done", "thread_id": "<uuid>" }` |
@@ -405,7 +446,8 @@ Re-reads a past conversation for re-display.
 
 **Returns** — `ConversationHistory`: `thread_id`, `machine_id` (the machine the
 thread is pinned to) and `messages`, each with `role` (`user`/`assistant`),
-`content` and `sources` (always present, empty for user messages).
+`content`, `sources` and `denied` (both always present, empty for user
+messages).
 `404` if the thread does not exist or is not the caller's; `422` if the id is
 not a UUID. A thread whose first turn failed exists with an empty message list.
 
@@ -568,6 +610,12 @@ EOF
   `requirements.txt` or the Dockerfile change.
 - **`restart` does not re-read `environment:`**; after changing the compose
   file use `docker compose up -d --force-recreate backend`.
+- **Only the backend should be reachable from outside.** The compose file
+  publishes the agents (`8001`) and the mock-backoffice (`8003`) ports, which
+  is convenient for testing them with curl but lets anyone reaching the host
+  call them directly, bypassing both the tenant and the visibility checks.
+  For a demo, remove their `ports:` sections: the backend still reaches them
+  by service name on the compose network.
 - **Both SQLite files live in `backend/data/`** (persisted by the bind mount).
   With WAL, the `-wal` and `-shm` side files are normal; do not delete them
   while the backend runs.
@@ -593,10 +641,6 @@ EOF
 
 ## Known limitations / next steps
 
-- **`visibility` is not enforced yet** (RBAC): a `commercial` user can ask
-  technical questions and a `technician` can reach commercial records. The
-  natural place is `prepare_turn` (which tools a user may use) and the tool
-  set bound per request.
 - **Grounding is prompt-based.** Rules in the system prompt reduce invented
   content but a 20B model can still add unsupported details; the most
   effective lever is a faithful `answer` from the agents, plus an automated
