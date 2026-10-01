@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { MOCK_USERS } from '../assets/mocks/MOCK_USERS';
+import { MOCK_USERS, MOCK_GUEST_TOKENS } from '../assets/mocks/MOCK_USERS';
 
 export const AuthContext = createContext(null);
 
@@ -160,8 +160,23 @@ export function AuthProvider({ children }) {
      * Will require a second login to unlock the chatbot and the fleet view.
      */
     const loginAsGuest = useCallback(async (guestToken) => {
+        // ── MOCK MODE ─────────────────────────────────────────────────────────────
+        if (USE_MOCK) {
+            await new Promise(resolve => setTimeout(resolve, 300)); // simulate network
+            const guestProfile = MOCK_GUEST_TOKENS[guestToken];
+            if (!guestProfile) {
+                console.warn('AuthContext (mock): unknown guest token:', guestToken);
+                return { ok: false };
+            }
+            const sessionData = { ...guestProfile, is_guest: true };
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+            setUser(sessionData);
+            return { ok: true };
+        }
+
+        // ── REAL MODE ─────────────────────────────────────────────────────────────
         try {
-            const response = await fetch(`${API_BASE_URL}/v1/sessions`, {
+            const response = await fetch(`${API_BASE_URL}/v1/sessions/guest`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
@@ -174,7 +189,7 @@ export function AuthProvider({ children }) {
             setUser(sessionData)
             return { ok: true }
         } catch { return { ok: false } }
-    }, [API_BASE_URL]);
+    }, [API_BASE_URL, USE_MOCK]);
 
     // ── LOGOUT ───────────────────────────────────────────────────────────────────
     /**
@@ -207,7 +222,7 @@ export function AuthProvider({ children }) {
     const isAuthenticated = !!user;
 
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated, authLoading, login, logout }}>
+        <AuthContext.Provider value={{ user, isAuthenticated, authLoading, login, loginAsGuest, logout }}>
             {children}
         </AuthContext.Provider>
     );

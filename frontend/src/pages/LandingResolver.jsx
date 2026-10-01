@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router';
 import LandingQR from './LandingQR';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * LandingResolver Component
