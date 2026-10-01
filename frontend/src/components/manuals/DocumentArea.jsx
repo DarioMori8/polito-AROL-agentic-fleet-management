@@ -3,6 +3,12 @@ import { Document, Page } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
+import 'react-pdf/dist/Page/TextLayer.css';
+
+// pdf.js downloads the file with its own fetch, which by default sends cookies
+// only to the same origin. The PDF is served by the backend (another origin),
+// so the session cookie must be requested explicitly.
+const PDF_OPTIONS = { withCredentials: true };
 /**
  * Builds a Set of lowercase tokens from the RAG snippet.
  * Filters out short words (< 4 chars) to avoid false-positive highlights
@@ -42,7 +48,7 @@ export default function DocumentArea({
                 setPageWidth(undefined);
             }
         };
-        
+
         handleResize();
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
@@ -106,9 +112,10 @@ export default function DocumentArea({
                 {activePdfUrl ? (
                     <Document
                         file={activePdfUrl}
+                        options={PDF_OPTIONS}
                         onLoadSuccess={onDocumentLoadSuccess}
-                        loading={<div className="pdf-loading">Caricamento PDF in corso...</div>}
-                        error={<div className="pdf-error">Impossibile caricare il file PDF.<br /><small>{activePdfUrl}</small></div>}
+                        loading={<div className="pdf-loading">PDF loading</div>}
+                        error={<div className="pdf-error">Impossible PDF load<br /><small>{activePdfUrl}</small></div>}
                     >
                         <Page
                             pageNumber={currentPage}
