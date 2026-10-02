@@ -8,7 +8,11 @@ const SESSION_KEY = 'arol_auth_session';
 /**
  * Maps the backend UserOut schema to our internal session shape.
  * Backend: { id, company_id, first_name, last_name, email, job_title, visibility }
- * Internal: { user_id, company_id, email, first_name, last_name, job_title, visibility }
+ * Internal: { user_id, company_id, email, first_name, last_name, job_title, visibility, is_guest }
+ *
+ * is_guest is derived from visibility so it is always consistent, even after a
+ * page refresh when the session is re-validated via GET /v1/sessions/current
+ * (which would otherwise lose the flag that loginAsGuest adds manually).
  */
 function mapUserOut(data) {
     return {
@@ -19,6 +23,7 @@ function mapUserOut(data) {
         last_name: data.last_name,
         job_title: data.job_title,
         visibility: data.visibility,
+        is_guest: data.visibility === 'guest',
         // note: company_name is not exposed by the backend UserOut schema
     };
 }
@@ -74,8 +79,11 @@ export function AuthProvider({ children }) {
         })();
         if (cached) setUser(cached); // instant restore from cache (no flash)
 
+        const controller = new AbortController();
+
         fetch(`${API_BASE_URL}/v1/sessions/current`, {
             credentials: 'include', // send the arol_session cookie
+            signal: controller.signal,
         })
             .then(res => res.ok ? res.json() : null)
             .then(data => {
@@ -84,17 +92,25 @@ export function AuthProvider({ children }) {
                     sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
                     setUser(sessionData);
                 } else {
-                    // Cookie expired or invalid → clear stale cache
-                    sessionStorage.removeItem(SESSION_KEY);
-                    setUser(null);
+                    // Cookie expired or invalid — BUT only clear if loginAsGuest()
+                    // hasn't already established a session while this fetch was in-flight
+                    // (race condition on /machine/:id QR-code routes).
+                    const alreadyLoggedIn = sessionStorage.getItem(SESSION_KEY);
+                    if (!alreadyLoggedIn) {
+                        sessionStorage.removeItem(SESSION_KEY);
+                        setUser(null);
+                    }
                 }
             })
-            .catch(() => {
+            .catch(err => {
+                if (err.name === 'AbortError') return; // unmounted, ignore
                 // Network error: keep the cached user so the app works offline,
                 // but do not block the UI.
                 console.warn('AuthContext: could not validate session with server.');
             })
             .finally(() => setAuthLoading(false));
+
+        return () => controller.abort();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -159,13 +175,13 @@ export function AuthProvider({ children }) {
      * Used to directly login by scanning a qr code on a machine.
      * Will require a second login to unlock the chatbot and the fleet view.
      */
-    const loginAsGuest = useCallback(async (guestToken) => {
+    const loginAsGuest = useCallback(async (guestEmail, guestPassword) => {
         // ── MOCK MODE ─────────────────────────────────────────────────────────────
         if (USE_MOCK) {
             await new Promise(resolve => setTimeout(resolve, 300)); // simulate network
-            const guestProfile = MOCK_GUEST_TOKENS[guestToken];
+            const guestProfile = MOCK_GUEST_TOKENS[guestEmail];
             if (!guestProfile) {
-                console.warn('AuthContext (mock): unknown guest token:', guestToken);
+                console.warn('AuthContext (mock): unknown guest email:', guestEmail);
                 return { ok: false };
             }
             const sessionData = { ...guestProfile, is_guest: true };
@@ -180,7 +196,7 @@ export function AuthProvider({ children }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ email: "guest", password: guestToken })
+                body: JSON.stringify({ email: guestEmail, password: guestPassword })
             });
             if (!response.ok) return { ok: false }
             const data = await response.json()

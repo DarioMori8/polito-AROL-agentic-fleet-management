@@ -14,7 +14,8 @@ import ProtectedRoute from './components/ui/ProtectedRoute';
  *
  * Route access model:
  *   PUBLIC      /login              → LoginPage
- *   PROTECTED   / /fleet /scanner   → require login
+ *   PROTECTED   / /fleet            → require login
+ *   SEMI-PUBLIC /scanner            → accessible without login (QR scan)
  *   SEMI-PUBLIC /machine/:id        → always visible (info + PDF), chat requires login
  *   SEMI-PUBLIC /workspace/:id      → PDF always visible, chat blocked until login
  */
@@ -35,12 +36,9 @@ export default function App() {
                             <Route path="/fleet" element={
                                 <ProtectedRoute><FleetView /></ProtectedRoute>
                             } />
-                            <Route path="/scanner" element={
-                                <ProtectedRoute><MachineScanner /></ProtectedRoute>
-                            } />
-
                             {/* Semi-public routes — accessible without login,
                                 but chat AI requires authentication (handled internally) */}
+                            <Route path="/scanner" element={<MachineScanner />} />
                             <Route path="/machine/:id" element={<LandingResolver />} />
                             <Route path="/workspace/:id" element={<WorkspaceWrapper />} />
                         </Routes>

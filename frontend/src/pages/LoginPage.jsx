@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router';
+import { Navigate, useNavigate, useLocation } from 'react-router';
 import { LogIn, Mail, Lock, ShieldAlert, Factory } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../styles/LoginPage.css';
@@ -21,11 +21,12 @@ export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
 
-    // If already authenticated, redirect immediately
+    // If already authenticated, redirect away from the login page.
+    // Use <Navigate> instead of navigate(): calling navigate() during render
+    // is a React violation that causes a silent white-screen crash.
     const destination = location.state?.from?.pathname || '/';
     if (isAuthenticated) {
-        navigate(destination, { replace: true });
-        return null;
+        return <Navigate to={destination} replace />;
     }
 
     const handleSubmit = async (e) => {

@@ -77,6 +77,14 @@ class Settings(BaseSettings):
     # shared volume is mounted.
     MANUALS_DIR: Path = BACKEND_ROOT.parent / "data" / "manuals"
 
+    # --- Guest QR codes
+    # Base URL embedded in per-machine QR codes for plant-floor visitors.
+    # The QR encodes <GUEST_QR_BASE_URL>/<machine_id>?u=<email>&k=<password>.
+    # Must match the frontend route: /machine/:id (see App.jsx).
+    # In production set this to the public frontend URL (e.g. https://arol.example.com/machine).
+    # In Docker the frontend is exposed on port 8080 of the host.
+    GUEST_QR_BASE_URL: str = "http://localhost:8080/machine"
+
 
 settings = Settings()
 
