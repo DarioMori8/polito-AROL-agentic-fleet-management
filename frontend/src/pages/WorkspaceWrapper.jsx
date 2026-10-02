@@ -50,7 +50,7 @@ export default function WorkspaceWrapper() {
                 id: `history-${idx}-${Date.now()}`,
                 sender: msg.role === 'user' ? 'user' : 'assistant',
                 text: msg.content,
-                timestamp: '', 
+                timestamp: '',
                 status: 'sent',
                 citations: (msg.sources || []).filter((source) => source.kind === 'manual').map((cit, citIdx) => ({
                     id: cit.id || `${cit.doc}-${cit.page}-${citIdx}`,
@@ -87,13 +87,13 @@ export default function WorkspaceWrapper() {
                 // Load sessions list
                 const sessionsKey = `arol_sessions_${id}`;
                 const savedSessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-                
+
                 if (isMounted) {
                     setSessionsList(savedSessions);
                 }
 
                 const sessionToLoad = savedSessions.length > 0 ? savedSessions[0].sessionId : null;
-                
+
                 if (sessionToLoad) {
                     if (isMounted) setCurrentSessionId(sessionToLoad);
                     const success = await loadSessionHistory(sessionToLoad);
@@ -163,7 +163,7 @@ export default function WorkspaceWrapper() {
                     setSessionsList(prev => {
                         // Check if it already exists
                         if (prev.find(s => s.sessionId === newSessionId)) return prev;
-                        
+
                         const newSessionObj = {
                             sessionId: newSessionId,
                             preview: messageData.text.substring(0, 40) + (messageData.text.length > 40 ? '...' : ''),
@@ -253,31 +253,31 @@ export default function WorkspaceWrapper() {
         // On success, isAuthenticated becomes true and the chat unlocks automatically
     };
 
-    // ── LOGIN GATE: shown when user is not authenticated ────────────────────────
-    if (!isAuthenticated) {
+    // ── LOGIN GATE: shown when user is not logged in or guest ────────────────────────
+    if (!isAuthenticated || user?.is_guest) {
         return (
             <ChatWorkspace
                 messages={messages}
                 isLoading={false}
-                onSendMessage={() => {}}
-                onSuggestionClick={() => {}}
+                onSendMessage={() => { }}
+                onSuggestionClick={() => { }}
                 onBackClick={handleBackToFleet}
                 onMenuToggle={() => setIsDrawerOpen(true)}
                 isDrawerOpen={isDrawerOpen}
                 onCloseDrawer={() => setIsDrawerOpen(false)}
                 sessionsList={[]}
                 currentSessionId={null}
-                onSelectSession={() => {}}
-                onNewChat={() => {}}
+                onSelectSession={() => { }}
+                onNewChat={() => { }}
                 loginGate={
                     <div className="chat-login-gate">
                         <div className="chat-login-gate-icon">
                             <Lock size={28} />
                         </div>
-                        <h3 className="chat-login-gate-title">Accesso richiesto</h3>
-                        <p className="chat-login-gate-sub">
-                            Accedi con le tue credenziali aziendali per usare il supporto AI
-                        </p>
+                        <h3 className="chat-login-gate-title">Login richiesto per la chat</h3>
+                        {user?.is_guest && <p className="chat-login-gate-sub">
+                            Stai navigando come ospite. Accedi con le tue credenziali aziendali per usare il supporto AI.
+                        </p>}
                         {loginError && (
                             <div className="chat-login-gate-error">{loginError}</div>
                         )}
@@ -327,16 +327,16 @@ export default function WorkspaceWrapper() {
             <ChatWorkspace
                 messages={[]}
                 isLoading={false}
-                onSendMessage={() => {}}
-                onSuggestionClick={() => {}}
+                onSendMessage={() => { }}
+                onSuggestionClick={() => { }}
                 onBackClick={handleBackToFleet}
                 onMenuToggle={() => setIsDrawerOpen(true)}
                 isDrawerOpen={isDrawerOpen}
                 onCloseDrawer={() => setIsDrawerOpen(false)}
                 sessionsList={[]}
                 currentSessionId={null}
-                onSelectSession={() => {}}
-                onNewChat={() => {}}
+                onSelectSession={() => { }}
+                onNewChat={() => { }}
                 loginGate={
                     <div className="chat-login-gate">
                         <div className="chat-login-gate-icon" style={{ backgroundColor: 'var(--arol-red-light)', color: 'var(--arol-red)' }}>
@@ -374,4 +374,4 @@ export default function WorkspaceWrapper() {
             onNewChat={handleNewChat}
         />
     );
-}
+}

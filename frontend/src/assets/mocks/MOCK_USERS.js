@@ -53,3 +53,37 @@ export const MOCK_USERS = [
         token: "mock-jwt-token-usr003-cmp002"
     }
 ];
+
+/**
+ * MOCK_GUEST_TOKENS — Pre-minted guest tokens, one per company.
+ *
+ * These tokens are embedded in the QR code URL as ?guest_token=<value>.
+ * Scanning the QR logs the user in as a guest with limited visibility
+ * (PDF always visible, chat blocked until real login).
+ *
+ * QR URL format:  http://localhost:5173/machine/<machineId>?guest_token=<token>
+ *
+ * Example QR URLs for testing:
+ *   CMP-001 machine 001: http://localhost:5173/machine/001?guest_token=mock-guest-cmp001-beccaris
+ *   CMP-002 machine 003: http://localhost:5173/machine/003?guest_token=mock-guest-cmp002-nuoro
+ */
+export const MOCK_GUEST_TOKENS = {
+    "mock-guest-cmp001-beccaris": {
+        user_id: "USR-GUEST-CMP001",
+        company_id: "CMP-001",
+        company_name: "Distillerie Beccaris S.r.l.",
+        first_name: "Ospite",
+        last_name: "Beccaris",
+        email: "guest@cmp001.arol-internal",
+        visibility: "commercial",
+    },
+    "mock-guest-cmp002-nuoro": {
+        user_id: "USR-GUEST-CMP002",
+        company_id: "CMP-002",
+        company_name: "Oleificio Nuoro S.p.A.",
+        first_name: "Ospite",
+        last_name: "Nuoro",
+        email: "guest@cmp002.arol-internal",
+        visibility: "commercial",
+    },
+};
