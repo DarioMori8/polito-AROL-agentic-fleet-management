@@ -55,10 +55,9 @@ export default function ChatWorkspace({
         return (
             <div className="workspace-empty-state">
                 <div className="empty-card">
-                    <h2>Nessun Macchinario Attivo</h2>
-                    <p>Scansiona un QR code o seleziona un dispositivo dalla flotta per accedere al workspace.</p>
-                    <button className="btn-rugged primary" onClick={onBackClick}>
-                        Torna alla Flotta
+                    <h2>Macchinario Non Attivo</h2>
+                    <button className="btn-rugged primary" onClick={() => { navigate(-1) }}>
+                        Torna Indietro
                     </button>
                 </div>
             </div>

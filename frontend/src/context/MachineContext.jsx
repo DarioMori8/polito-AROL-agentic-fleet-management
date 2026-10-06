@@ -131,17 +131,21 @@ export function MachineProvider({ children }) {
         setLoading(true);
         setError(null);
 
-        // UX OPTIMIZATION: Set active machine IMMEDIATELY if already loaded in fleet state
-        const localMatch = fleet.find(m => isMatchingId(m.id, id));
-        if (localMatch) {
-            setActiveMachine(localMatch);
-        }
+        // Clear stale activeMachine immediately if the requested ID is different.
+        // Without this, LandingQR's useEffect sees the old activeMachine and fires
+        // onScanSuccess (redirect to workspace) before the fetch completes, making
+        // it impossible to show a "machine not found" error for the new ID.
+        setActiveMachine(prev => {
+            if (prev && !isMatchingId(prev.id, id)) return null;
+            return prev;
+        });
 
         // MOCK MODE
         if (USE_MOCK) {
             await new Promise(resolve => setTimeout(resolve, 500));
             const machine = MOCK_FLEET.find(m => isMatchingId(m.id, id));
             if (!machine) {
+                setActiveMachine(null);
                 setError(`Machine ID "${id}" is not registered in the AROL mock fleet.`);
                 setLoading(false);
                 return;
@@ -199,13 +203,9 @@ export function MachineProvider({ children }) {
                 }
                 setError('Working offline. Displaying cached machine profile.');
             } else {
-                // Fallback: If cache doesn't match but we have the fleet array match, preserve the localMatch
-                if (localMatch) {
-                    setActiveMachine(localMatch);
-                    setError('Offline. Loaded machine details from active fleet memory.');
-                } else {
-                    setError(err.message || 'Connection failure. Unable to resolve scanned asset.');
-                }
+                // No matching cache: show error and leave activeMachine as null
+                // (already cleared at the top of scanMachine for a different ID)
+                setError(err.message || 'Connection failure. Unable to resolve scanned asset.');
             }
         } finally {
             setLoading(false);

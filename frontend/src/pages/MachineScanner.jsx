@@ -52,7 +52,7 @@ const MachineScanner = () => {
 
     return (
         <div className="scanner-page">
-            <Header onBackClick={() => navigate('/')} />
+            <Header onBackClick={() => navigate(-1)} />
 
             <main className="scanner-body">
                 {/* Instruction card */}

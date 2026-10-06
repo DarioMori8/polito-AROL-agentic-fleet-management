@@ -57,16 +57,30 @@ Progettato per ambienti industriali con illuminazione variabile e uso con guanti
 ### Routing (`App.jsx`)
 
 ```
-/                → FleetView        (lista flotta macchine)
-/fleet           → FleetView        (alias)
-/machine/:id     → LandingResolver  → LandingQR (scansione QR + scheda macchina)
-/workspace/:id   → WorkspaceWrapper → ChatWorkspace (chat SSE + ManualViewer)
-/scanner         → MachineScanner   (scansione manuale via fotocamera)
+/login           → LoginPage        (form di autenticazione)
+/                → FleetView        (lista flotta macchine) [PROTETTA]
+/fleet           → FleetView        (alias)                 [PROTETTA]
+/machine/:id     → LandingResolver  → LandingQR (scansione QR + scheda macchina) [SEMI-PUBBLICA]
+/workspace/:id   → WorkspaceWrapper → ChatWorkspace (chat SSE + ManualViewer)    [SEMI-PUBBLICA]
+/scanner         → MachineScanner   (scansione manuale via fotocamera)            [PROTETTA]
 ```
+
+**Modello di accesso:**
+- **PROTETTA** — richiede autenticazione completa (utente reale); gli utenti guest vengono reindirizzati a `/login`.
+- **SEMI-PUBBLICA** — la pagina macchina e il manuale PDF sono sempre accessibili; la chat AI richiede login reale (il gate è mostrato inline nella workspace).
 
 ### State Management
 
 ```
+AuthProvider (React Context globale — AuthContext.jsx)
+    ├── user            → { user_id, company_id, first_name, last_name, email, visibility, is_guest }
+    ├── isAuthenticated → !!user
+    ├── authLoading     → true durante la risoluzione della sessione al mount
+    ├── login()         → POST /v1/sessions  { email, password }  → Set-Cookie: arol_session
+    ├── loginAsGuest()  → POST /v1/sessions  { email: "guest", password: guest_token }
+    │                     (mock: lookup in MOCK_GUEST_TOKENS; real: endpoint backend)
+    └── logout()        → DELETE /v1/sessions/current  → clearSessionStorage
+
 MachineProvider (React Context globale — MachineContext.jsx)
     ├── fleet[]           → GET /v1/machines
     ├── activeMachine     → GET /v1/machines/{id}
@@ -133,6 +147,9 @@ frontend/
 ├── src/
 │   ├── assets/
 │   │   └── mocks/
+│   │       ├── MOCK_USERS.js          # Utenti mock + MOCK_GUEST_TOKENS (un token per company)
+│   │       ├── MOCK_FLEET.jsx         # Dataset macchine mock con company_id
+│   │       ├── MOCK_MANUALS.jsx       # Associazione machine → manuale mock
 │   │       └── MOCK_MANUALS_DATABASE  # Database mock manuali per sviluppo offline
 │   ├── components/
 │   │   ├── chat/
@@ -150,8 +167,10 @@ frontend/
 │   │   │   └── TopToolbar.jsx         # Toolbar viewer: selezione documento, zoom, fullscreen, ricerca
 │   │   └── ui/
 │   │       ├── Button.jsx             # Componente bottone riusabile
-│   │       └── Header.jsx             # Header generico condiviso
+│   │       ├── Header.jsx             # Header generico condiviso
+│   │       └── ProtectedRoute.jsx     # Guard route: blocca utenti non autenticati e guest
 │   ├── context/
+│   │   ├── AuthContext.jsx            # Provider auth: login, loginAsGuest, logout, sessione persistente
 │   │   └── MachineContext.jsx         # Provider flotta: fetch, scan, cache, offline fallback
 │   ├── hooks/
 │   │   ├── useChatStream.js           # Hook SSE streaming (fetch + ReadableStream) — principale
@@ -159,9 +178,10 @@ frontend/
 │   ├── models/
 │   │   └── ChatMessage.js             # Schema ChatMessage con DEFAULT_CHAT_MESSAGE
 │   ├── pages/
+│   │   ├── LoginPage.jsx              # Pagina login con form email/password
 │   │   ├── FleetView.jsx              # Dashboard flotta: griglia macchine, filtri, ricerca
 │   │   ├── LandingQR.jsx              # Landing post-scansione: scheda macchina + navigazione
-│   │   ├── LandingResolver.jsx        # Resolver route /machine/:id → LandingQR
+│   │   ├── LandingResolver.jsx        # Resolver route /machine/:id → LandingQR + guest auto-login
 │   │   ├── MachineScanner.jsx         # Scanner QR via fotocamera (html5-qrcode)
 │   │   ├── ChatWorkspace.jsx          # Layout workspace: tab mobile / split-screen tablet
 │   │   └── WorkspaceWrapper.jsx       # Orchestratore: messaggi, sessioni, SSE, history, drawer
@@ -188,7 +208,7 @@ frontend/
 │   │   ├── MachineScanner.css
 │   │   ├── ManualViewer.css
 │   │   └── SuggestionChips.css
-│   ├── App.jsx                        # Router React + MachineProvider
+│   ├── App.jsx                        # Router React + AuthProvider + MachineProvider
 │   └── main.jsx                       # Entry point React
 ├── .env                               # VITE_API_URL, VITE_USE_MOCK (non versionato)
 ├── .env.example                       # Template variabili d'ambiente
@@ -274,6 +294,31 @@ Questo garantisce che deep-link (es. `/workspace/2`) e reload manuali non produc
 
 ## 🆕 Last Updates
 
+- ✅ **Sistema di Autenticazione completo** `🔴 Sicurezza`
+  Implementato il layer di autenticazione basato su sessioni server-side con cookie `httpOnly`. `AuthContext.jsx` gestisce l'intero ciclo di vita: `login()` (POST `/v1/sessions`), `logout()` (DELETE `/v1/sessions/current`), e il ripristino della sessione al mount (`GET /v1/sessions/current`). La sessione è mantenuta in un cookie `arol_session` opaco — nessun token nel frontend. `sessionStorage` è usato solo come cache di visualizzazione rapida (evita il flash UI al refresh), con il server come unica source of truth.
+
+- ✅ **Login automatico Guest via QR code** `🔵 Funzionalità`
+  Il QR code di ogni macchina può ora incorporare un `?guest_token=<token>` nell'URL. Quando `LandingResolver` rileva il parametro, chiama `loginAsGuest()` che autentica automaticamente l'utente come ospite dell'azienda proprietaria del macchinario. Il guest vede la scheda macchina e il manuale PDF, ma la chat AI è bloccata da un gate inline che richiede login con credenziali reali. In mock mode i token sono definiti in `MOCK_GUEST_TOKENS` (in `MOCK_USERS.js`); in real mode viene chiamato il backend.
+
+  **URL QR per test (mock mode):**
+  ```
+  http://localhost:3000/machine/001?guest_token=mock-guest-cmp001-beccaris
+  http://localhost:3000/machine/003?guest_token=mock-guest-cmp002-nuoro
+  ```
+
+- ✅ **Modello di visibilità a tre livelli** `🔵 Funzionalità`
+  Le route sono ora classificate in tre livelli di accesso:
+  - **Protette** (`/`, `/fleet`, `/scanner`): richiedono autenticazione reale; gli utenti guest vengono reindirizzati a `/login` da `ProtectedRoute.jsx`.
+  - **Semi-pubbliche** (`/machine/:id`, `/workspace/:id`): la scheda macchina e il PDF sono sempre visibili; la chat AI richiede login reale (gate inline in `WorkspaceWrapper`).
+  - **Pubbliche** (`/login`): accessibili senza autenticazione.
+  Dopo login reale da guest, il cookie viene sovrascritto e l'utente è identificato come utente specifico; la chat si sblocca automaticamente.
+
+- ✅ **Fix parser SSE: thinking non appare più nella risposta** `🐛 Bug Fix`
+  Il parser SSE in `useChatStream.js` inizializzava `eventType` a `'message'` invece di `null`. Questo causava che frame `thinking` senza riga `event:` esplicita (o con tipo non riconosciuto) venissero instradati nel `default` del `switch`, che chiamava `onToken()` — rendendo il testo del ragionamento interno visibile nella bolla di risposta. Fix: `eventType` inizia a `null`; il `default` ora logga un warning senza toccare `onToken`. Corretta anche la concatenazione dei campi `data:` multi-riga per conformità alla spec SSE.
+
+- ✅ **Fix stale machine: navigare a ID diverso ora mostra errore corretto** `🐛 Bug Fix`
+  In `MachineContext.scanMachine()`, quando si richiedeva un ID diverso da quello già in cache, `activeMachine` manteneva il valore vecchio durante il fetch asincrono. `LandingQR` vedeva l'`activeMachine` non-null e scattava `onScanSuccess` (redirect al workspace) prima che arrivasse l'errore. Fix: `activeMachine` viene azzerato a `null` immediatamente se l'ID richiesto è diverso da quello corrente.
+
 - ✅ **Toggle "AI Thinking" espandibile** `🔵 Miglioramento`
   Quando l'AI invia eventi `thinking` (ragionamento interno del modello), viene mostrato un elemento collassabile nella bolla AI — un accordion `💭 Mostra ragionamento` — che l'operatore può espandere per vedere il processo decisionale dell'AI. Implementato in `ChatBubble.jsx` tramite il campo `thinkingText`, accumulato da `WorkspaceWrapper` via callback `onThinking` dall'hook `useChatStream`.
 
@@ -281,27 +326,21 @@ Questo garantisce che deep-link (es. `/workspace/2`) e reload manuali non produc
   Il `SearchDrawer.jsx` è ora collegato alla logica di ricerca full-text nel `ManualViewer`. All'apertura di ogni PDF, il testo viene estratto pagina per pagina con `react-pdf` (`getTextContent()`). La ricerca avviene client-side: supporta sia la ricerca per titolo/filename tra tutti i manuali disponibili, sia la ricerca full-text nel documento aperto, con navigazione diretta alla pagina del match.
 
 - ✅ **Implementazione frontend Chat History**
-  Gestione completa della cronologia delle conversazioni per macchina. Le sessioni sono salvate in `localStorage` (`arol_sessions_{machineId}`). All'init, `WorkspaceWrapper` carica automaticamente l'ultima sessione dal backend via `GET /v1/conversations/{session_id}/messages`, ricostruendo la cronologia con i rispettivi messaggi e citazioni. Il componente `ChatHistoryDrawer` permette di navigare tra sessioni passate e avviare nuove conversazioni. `useChatApi.js` è stato riconvertito da hook deprecato a hook dedicato per il fetch della history.
+  Gestione completa della cronologia delle conversazioni per macchina. Le sessioni sono salvate in `localStorage` (`arol_sessions_{machineId}`). All'init, `WorkspaceWrapper` carica automaticamente l'ultima sessione dal backend via `GET /v1/conversations/{session_id}/messages`, ricostruendo la cronologia con i rispettivi messaggi e citazioni. Il componente `ChatHistoryDrawer` permette di navigare tra sessioni passate e avviare nuove conversazioni.
 
-- ✅ **Migliorare renderizzazione markdown** `🔵 Miglioramento`
-  Le risposte dell'AI sono renderizzate tramite `react-markdown` con il plugin `remark-gfm`. Supporto completo per tabelle, bold, italic, liste ordinate/non-ordinate, blocchi di codice, link e tutti i principali stili GFM per un output leggibile e professionale.
+- ✅ **Rendering Markdown GFM completo** `🔵 Miglioramento`
+  Le risposte dell'AI sono renderizzate tramite `react-markdown` con il plugin `remark-gfm`. Supporto completo per tabelle, bold, italic, liste ordinate/non-ordinate, blocchi di codice, link e tutti i principali stili GFM.
 
 ---
 
 ## ⚠️ Note Importanti
 
-### `useChatApi.js` — Riabilitato (non più deprecato)
-Il file `src/hooks/useChatApi.js` è stato riconvertito da hook non-streaming (deprecato) a hook dedicato al fetch della **chat history** (`fetchChatHistory`). Viene importato da `WorkspaceWrapper` per il restore delle sessioni passate tramite `GET /v1/conversations/{session_id}/messages`.
+### Sessione guest e refresh
+Il flag `is_guest` viene impostato dal frontend in `loginAsGuest()` e salvato in `sessionStorage`. Al refresh, la sessione viene rivalidata con `GET /v1/sessions/current`: se il backend non include `is_guest` nel `UserOut`, il flag si perde e il guest appare come utente normale (chat sbloccata). Per una protezione robusta, aggiungere `is_guest: bool` al modello `User` e `UserOut` nel backend (vedi Opzione A nella documentazione backend).
+
+### Lista sessioni salvata in localStorage
+I `thread_id` delle conversazioni sono salvati in `localStorage` (`arol_sessions_{machineId}`). Non esiste un endpoint backend per elencarle (`GET /v1/conversations` non è implementato). Cambiare browser o dispositivo comporta la perdita della lista, anche se i messaggi rimangono recuperabili lato server con il thread_id.
 
 ### `AIReferenceBanner` — Temporaneamente disabilitato
 Il componente `AIReferenceBanner.jsx` è stato commentato in `ManualViewer.jsx`. La funzione di mostrare snippet RAG in overlay è risultata ridondante con la navigazione diretta alla pagina tramite citation. Può essere riabilitato decommentando il relativo blocco in `ManualViewer.jsx`.
 
-### `machine_id` senza autenticazione
-Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque conosca un ID può accedere ai dati di quella macchina — non c'è verifica di autenticazione.
-
----
-
-## 📋 To-Do
-
-- [ ] **#1 — Autenticazione `machine_id`** `🔴 Sicurezza`
-  Il `machine_id` viene estratto direttamente da `useParams()` (URL). Chiunque conosca un ID può accedere ai dati di quella macchina — non c'è verifica di autenticazione. Aggiungere un meccanismo di verifica (es. token JWT, sessione operatore) prima di caricare i dati di una macchina in `LandingQR` e `WorkspaceWrapper`.

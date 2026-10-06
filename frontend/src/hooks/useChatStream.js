@@ -197,16 +197,21 @@ export default function useChatStream() {
                 for (const part of parts) {
                     if (!part.trim()) continue;
 
-                    // Parse SSE fields: event and data
-                    let eventType = 'message';
+                    // Parse SSE fields: event and data.
+                    // eventType starts as null — frames without an explicit 'event:' line
+                    // fall through to the default case rather than being misrouted as 'message'.
+                    // Multiple 'data:' lines in a single frame are concatenated per the SSE spec.
+                    let eventType = null;
                     let dataPayload = '';
 
                     const lines = part.split('\n');
                     for (const line of lines) {
                         if (line.startsWith('event:')) {
-                            eventType = line.replace('event:', '').trim();
+                            eventType = line.slice('event:'.length).trim();
                         } else if (line.startsWith('data:')) {
-                            dataPayload = line.replace('data:', '').trim();
+                            // Concatenate multi-line data fields with a newline, as the SSE spec requires
+                            const chunk = line.slice('data:'.length).trim();
+                            dataPayload = dataPayload ? dataPayload + '\n' + chunk : chunk;
                         }
                     }
 
@@ -293,11 +298,10 @@ export default function useChatStream() {
                             break;
 
                         default:
-                            // Fallback parsing for unstructured data
-                            if (parsedData.answer) {
-                                accumulatedText = parsedData.answer;
-                                if (onToken) onToken(parsedData.answer);
-                            }
+                            // Unknown event type — log and skip.
+                            // Do NOT forward to onToken: an unrecognised 'thinking' frame
+                            // would otherwise leak into the visible response text.
+                            console.warn('useChatStream: unhandled SSE event type:', eventType, parsedData);
                             break;
                     }
                 }
