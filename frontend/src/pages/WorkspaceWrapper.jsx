@@ -32,7 +32,7 @@ export default function WorkspaceWrapper() {
     const [currentSessionId, setCurrentSessionId] = useState(null);
 
     // API hooks
-    const { fetchChatHistory } = useChatApi();
+    const { fetchConversations, fetchChatHistory } = useChatApi();
     const { streamMessage, isStreaming, abortStream } = useChatStream();
 
     // Trigger Context load if the user types or deep-links directly into the workspace URL
@@ -84,9 +84,15 @@ export default function WorkspaceWrapper() {
 
         const initializeChat = async () => {
             if (activeMachine && isMatchingId(activeMachine.id, id)) {
-                // Load sessions list
-                const sessionsKey = `arol_sessions_${id}`;
-                const savedSessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
+                // Load sessions list from backend.
+                // GET /v1/conversations?machine_id={id} — user is identified from the session cookie.
+                // Falls back to an empty list if the endpoint is unavailable (backend not yet deployed).
+                const conversations = await fetchConversations(id);
+                const savedSessions = conversations.map(c => ({
+                    sessionId: c.thread_id,
+                    preview: c.preview || 'Conversazione',
+                    timestamp: c.created_at ? new Date(c.created_at).getTime() : Date.now(),
+                }));
 
                 if (isMounted) {
                     setSessionsList(savedSessions);
@@ -113,7 +119,7 @@ export default function WorkspaceWrapper() {
         return () => {
             isMounted = false;
         };
-    }, [activeMachine, id, loadSessionHistory, getWelcomeMessage]);
+    }, [activeMachine, id, loadSessionHistory, getWelcomeMessage, fetchConversations]);
 
     // Clean-up connection on unmount
     useEffect(() => {
@@ -157,21 +163,19 @@ export default function WorkspaceWrapper() {
             messageId: aiMessageId,
             sessionId: currentSessionId,
             onSessionCreated: (newSessionId) => {
-                // If it's a new session, update our state and localStorage
+                // Update local UI state with the new session.
+                // The backend records the thread on the first turn
+                // and it will appear in the list on the next fetchConversations call.
                 if (newSessionId !== currentSessionId) {
                     setCurrentSessionId(newSessionId);
                     setSessionsList(prev => {
-                        // Check if it already exists
                         if (prev.find(s => s.sessionId === newSessionId)) return prev;
-
                         const newSessionObj = {
                             sessionId: newSessionId,
                             preview: messageData.text.substring(0, 40) + (messageData.text.length > 40 ? '...' : ''),
                             timestamp: Date.now()
                         };
-                        const updated = [newSessionObj, ...prev];
-                        localStorage.setItem(`arol_sessions_${id}`, JSON.stringify(updated));
-                        return updated;
+                        return [newSessionObj, ...prev];
                     });
                 }
             },

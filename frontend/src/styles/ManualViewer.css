@@ -65,9 +65,11 @@ mark.pdf-highlight {
   padding: 10px 14px;
   background-color: var(--arol-blue);
   color: var(--white);
-  gap: 10px;
+  gap: 8px;
   border-bottom: 2px solid var(--arol-sky);
   flex-shrink: 0;
+  /* Allow wrapping onto two rows on narrow screens */
+  flex-wrap: wrap;
 }
 
 /* Left group: book icon + document selector dropdown */
@@ -113,6 +115,9 @@ mark.pdf-highlight {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  /* Allow this group to grow and center itself when it wraps alone */
+  flex: 1 1 auto;
+  justify-content: center;
 }
 
 .toolbar-nav-btn {
@@ -197,6 +202,7 @@ mark.pdf-highlight {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  /* On narrow screens this group wraps to its own row and centers */
 }
 
 .toolbar-btn {
@@ -897,10 +903,6 @@ mark.pdf-highlight {
     padding: 6px 8px;
   }
 
-  .zoom-percentage {
-    display: none;
-  }
-
   .sheet-body-content {
     flex-direction: column;
   }
@@ -931,5 +933,58 @@ mark.pdf-highlight {
 
   .banner-snippet-body {
     width: 100%;
+  }
+}
+
+/* ==========================================================================
+   TOOLBAR MOBILE WRAP — two-row layout for narrow phones (≤ 480px)
+   Row 1: page navigation  |  Row 2: search + zoom + fullscreen
+   ========================================================================== */
+@media (max-width: 480px) {
+  .viewer-toolbar {
+    padding: 8px 10px;
+    gap: 6px;
+    /* Two explicit rows via grid so each group fills its row cleanly */
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  /* Row 1 – page navigation: stretch full width and center content */
+  .toolbar-center-navigation {
+    grid-row: 1;
+    width: 100%;
+    justify-content: center;
+    flex: unset;
+  }
+
+  /* Row 2 – action buttons: stretch full width and center content */
+  .toolbar-right-actions {
+    grid-row: 2;
+    width: 100%;
+    justify-content: center;
+    padding-top: 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  /* Slightly smaller touch targets to fit 5 controls per row */
+  .toolbar-btn {
+    height: 34px;
+    width: 34px;
+  }
+
+  .toolbar-nav-btn {
+    height: 34px;
+    width: 34px;
+  }
+
+  /* Hide zoom percentage label — icons alone are clear enough */
+  .zoom-percentage {
+    display: none;
+  }
+
+  /* Tighten zoom cluster */
+  .zoom-controls {
+    gap: 0;
   }
 }

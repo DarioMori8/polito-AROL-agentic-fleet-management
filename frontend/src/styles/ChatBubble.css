@@ -319,18 +319,34 @@
    MARKDOWN ELEMENTS (React Markdown + GFM)
    ========================================================= */
 
-/* Markdown Tables */
+/* Markdown Tables — scrollable wrapper for narrow mobile screens */
+.bubble-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* smooth momentum scroll on iOS */
+  margin: 12px 0;
+  border-radius: var(--radius-sm);
+  /* Subtle shadow on the right edge to hint scrollability */
+  background:
+    linear-gradient(to right, transparent, transparent),
+    linear-gradient(to right, transparent, rgba(0,0,0,0.04));
+  background-attachment: local, scroll;
+}
+
 .bubble table {
   border-collapse: collapse;
+  /* min-width ensures columns keep their natural width; the wrapper scrolls */
+  min-width: 480px;
   width: 100%;
-  margin: 12px 0;
+  margin: 0;
   font-size: 0.85rem;
+  white-space: nowrap; /* prevent column text from wrapping and stacking */
 }
 
 .bubble th, .bubble td {
   border: 1px solid rgba(0, 0, 0, 0.1);
-  padding: 8px 10px;
+  padding: 8px 12px;
   text-align: left;
+  white-space: nowrap;
 }
 
 .chat-row.assistant .bubble th, .chat-row.assistant .bubble td {
@@ -344,6 +360,8 @@
 .bubble th {
   font-weight: 700;
   background-color: rgba(0, 0, 0, 0.05);
+  position: sticky;
+  top: 0;
 }
 
 .chat-row.user .bubble th {

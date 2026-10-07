@@ -60,7 +60,18 @@ export default function ChatBubble({ message, onCitationClick, onRetry }) {
 
                     {/* Display the message text */}
                     <div className="bubble-text">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                // Wrap every markdown table in a horizontally-scrollable container
+                                // so it doesn't squish columns on narrow mobile screens
+                                table: ({ node, ...props }) => (
+                                    <div className="bubble-table-wrapper">
+                                        <table {...props} />
+                                    </div>
+                                ),
+                            }}
+                        >
                             {displayText}
                         </ReactMarkdown>
                     </div>

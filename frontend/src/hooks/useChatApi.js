@@ -12,6 +12,32 @@ export default function useChatApi() {
     const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000';
 
     /**
+     * Fetches the list of conversations for the current user, filtered by machine.
+     *
+     * Endpoint: GET /v1/conversations?machine_id={machineId}
+     * Expected response: [ { thread_id, preview, created_at }, ... ]
+     * The user is identified server-side from the arol_session cookie.
+     *
+     * @param {string} machineId - Machine ID to filter conversations by.
+     * @returns {Promise<Array>} List of conversation metadata, or [] on failure.
+     */
+    const fetchConversations = useCallback(async (machineId) => {
+        try {
+            const params = machineId ? `?machine_id=${encodeURIComponent(machineId)}` : '';
+            const response = await fetch(`${API_BASE_URL}/v1/conversations${params}`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'include',
+            });
+            if (!response.ok) return [];
+            return await response.json(); // [{ thread_id, preview, created_at }, ...]
+        } catch (err) {
+            console.error('AROL Chat API: fetchConversations error:', err);
+            return [];
+        }
+    }, [API_BASE_URL]);
+
+    /**
      * Fetches past conversation history for a given thread ID.
      *
      * @param {string} sessionId - The thread UUID to fetch history for.
@@ -22,23 +48,16 @@ export default function useChatApi() {
         try {
             const response = await fetch(`${API_BASE_URL}/v1/conversations/${sessionId}/messages`, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                },
-                credentials: 'include', // sends arol_session cookie automatically
+                headers: { 'Accept': 'application/json' },
+                credentials: 'include',
             });
-            if (!response.ok) {
-                return null;
-            }
-            const data = await response.json();
-            return data;
+            if (!response.ok) return null;
+            return await response.json();
         } catch (err) {
             console.error('AROL Chat API History Fetch Error:', err);
             return null;
         }
     }, [API_BASE_URL]);
 
-    return {
-        fetchChatHistory
-    };
+    return { fetchConversations, fetchChatHistory };
 }
