@@ -4,7 +4,7 @@ from typing import AsyncIterator
 from uuid import UUID
 
 from app.db.models import User, Visibility
-from app.models.chat import ChatRequest, ChatResponse, ConversationHistory
+from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, ConversationSummary
 
 
 # --- Domain errors
@@ -60,4 +60,9 @@ class Orchestrator(ABC):
 
     @abstractmethod
     async def get_history(self, user: User, thread_id: UUID) -> ConversationHistory | None:
+        ...
+    @abstractmethod
+    async def list_conversations(
+        self, user: User, machine_id: str | None = None
+    ) -> list[ConversationSummary]:
         ...

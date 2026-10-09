@@ -15,8 +15,11 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.config import settings
-from app.db.models import Conversation, User
-from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, Denial, HistoryMessage, MessageRole
+from sqlmodel import select
+
+
+from app.db.models import PREVIEW_MAX_CHARS,Conversation, User
+from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, ConversationSummary, Denial, HistoryMessage, MessageRole
 from app.orchestrator.agent_registry import AGENT_TOOLS
 from app.orchestrator.base import (
     ConversationNotFoundError,
@@ -238,6 +241,13 @@ def _extract_sources(messages: list[BaseMessage]) -> list[dict]:
             sources.extend(normalize_artifact(msg.artifact))
     return _dedupe(sources)
 
+def _make_preview(query: str) -> str:
+    """First line of the question, cut at PREVIEW_MAX_CHARS with an ellipsis."""
+    text = " ".join(query.split())          # collapse newlines and runs of spaces
+    if len(text) <= PREVIEW_MAX_CHARS:
+        return text
+    return text[: PREVIEW_MAX_CHARS - 1].rstrip() + "…"
+
 
 def _project_messages(messages: list[BaseMessage]) -> list[HistoryMessage]:
     """
@@ -312,6 +322,8 @@ class LangGraphOrchestrator(Orchestrator):
                     thread_id=str(thread_id),
                     user_id=user.id,
                     machine_id=machine.id,
+                    preview=_make_preview(request.query),
+
                 ))
                 await db.commit()
                 is_new = True
@@ -470,3 +482,32 @@ class LangGraphOrchestrator(Orchestrator):
             machine_id=conversation.machine_id,
             messages=_project_messages(messages),
         )
+
+    async def list_conversations(
+        self, user: User, machine_id: str | None = None
+    ) -> list[ConversationSummary]:
+        """
+        The caller's own conversations, newest first, optionally only those
+        about one machine.
+
+        Ownership is the filter itself (user_id), so another user's threads
+        can never appear. A machine_id that is not the caller's (another
+        company's, or nonexistent) simply matches nothing: the answer is an
+        empty list, indistinguishable from "no conversations yet".
+        """
+        query = select(Conversation).where(Conversation.user_id == user.id)
+        if machine_id is not None:
+            query = query.where(Conversation.machine_id == machine_id)
+        query = query.order_by(Conversation.created_at.desc())
+
+        async with self._session_factory() as db:
+            rows = (await db.exec(query)).all()
+
+        return [
+            ConversationSummary(
+                thread_id=UUID(row.thread_id),
+                preview=row.preview,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]

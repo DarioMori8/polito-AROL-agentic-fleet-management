@@ -21,6 +21,9 @@ On top of the loop:
   resolved server-side on every request.
 - **Multi-tenancy** — every read is scoped to the authenticated user's
   company; every conversation is owned by one user and pinned to one machine.
+- **Guest access by QR code** — someone in the plant who scans a machine's QR
+  without an account is logged in as their company's guest and can read
+  manuals only (see *Guest access*).
 - **Visibility-based access** — inside their company, a user reaches only
   the data domains their `visibility` allows, enforced in code before any
   agent is contacted (see *Access model*).
@@ -56,7 +59,7 @@ backend/
 │   │   ├── deps.py                # get_current_user / CurrentUser: the auth gate
 │   │   └── v1/
 │   │       ├── auth.py            # POST/GET/DELETE /v1/sessions[/current]
-│   │       └── chat.py            # /v1/chat, /v1/chat/stream, /v1/conversations/{id}/messages
+│   │       └── chat.py            # /v1/chat, /v1/chat/stream, /v1/conversations[/{id}/messages]
 │   ├── orchestrator/
 │   │   ├── base.py                # Orchestrator ABC, TurnContext, domain errors
 │   │   ├── agent_registry.py      # @tool functions, one per agent; scope injected via config
@@ -74,6 +77,7 @@ backend/
 │   ├── db/
 │   │   ├── engine.py              # Async engine, session factory, SQLite PRAGMAs, create_all
 │   │   ├── models.py              # SQLModel tables (see Domain database)
+│   │   ├── guest_accounts.py      # Guest passwords, QR URLs; CLI for rotation
 │   │   └── seed.py                # Dataset fixtures, dev credentials, manual ingest
 │   ├── models/
 │   │   ├── auth.py                # LoginRequest / UserOut
@@ -85,6 +89,7 @@ backend/
 │
 ├── data/                          # created at startup, persisted by the bind mount
 │   ├── domain.sqlite              # Domain database (+ -wal / -shm side files)
+│   ├── qr_urls.txt                # QR URLs with live guest passwords (mode 0600, never commit)
 │   └── checkpoints.sqlite         # LangGraph conversation checkpoints (separate DB)
 ├── requirements.txt
 ├── .env
@@ -290,6 +295,7 @@ Two independent checks, both required before any data is returned:
 | `full`       | yes | yes | yes |
 | `technician` | yes | yes | no  |
 | `commercial` | yes | no  | yes |
+| `guest`      | yes (no chat) | no | no |
 
 The policy lives in one place, `app/security/access.py`. It is enforced
 **in code, never by the LLM**:
@@ -310,6 +316,41 @@ The policy lives in one place, `app/security/access.py`. It is enforced
   and the mock-backoffice are reachable from the backend alone (see *Docker
   notes*).
 
+## Guest access
+
+A guest is someone physically in the customer's plant who scans the QR code
+on a machine **without having an account**. The frontend logs them in
+automatically and shows that machine's manual.
+
+- **One guest account per company** (`guest@<company domain>`, ids `USR-G001`…),
+  with `visibility = guest`. They are not in the dataset; the seed adds them.
+- **The QR carries the guest's credentials**:
+  `<GUEST_QR_BASE_URL>/<machine_id>?u=<guest email>&k=<guest password>`. If no
+  session exists, the frontend calls the ordinary `POST /v1/sessions` with
+  them; a user already logged in keeps their own session.
+- **Each company has its own random password.** A shared one would let the QR
+  of one company open every other company's guest (guest emails are
+  guessable), crossing the tenant boundary.
+- **Only the hash is stored**, as for every password. The clear passwords
+  exist only when minted: the seed writes one QR URL per machine to
+  `backend/data/qr_urls.txt` (mode `0600`, keep it out of git). If the file is
+  lost, rotate and reprint.
+- **What a guest can do**, enforced in code:
+  - tenant: only their own company, as for every user;
+  - `visibility = guest` allows only machine identity and documentation;
+  - the assistant is closed to guests: chat, stream and history answer `403`.
+
+  "Only the scanned machine's manual" is enforced by the **frontend**: the
+  backend lets a guest read the identity and manuals of every machine of
+  their company, which the access model allows to every user of that company.
+- **Rotation**, e.g. if a photo of a QR circulates: a new password for that
+  company's guest; all of that company's QR codes must be reprinted. Existing
+  guest sessions remain valid until they expire.
+
+```bash
+docker compose exec backend python -m app.db.guest_accounts rotate CMP-001
+```
+
 ## Domain database
 
 A SQLite database (`DOMAIN_DB_PATH`) modelled on the AROL Q2 synthetic fleet
@@ -325,12 +366,12 @@ the agents) and are **not** stored here.
 | Table            | Key fields | Notes |
 |------------------|-----------|-------|
 | `companies`      | `id` (`CMP-001`), name, country, city, sector, currency, locale | The tenant boundary. |
-| `users`          | `id` (`USR-001`), `company_id` → companies, first/last name, `email` (UNIQUE), job title, `visibility`, `password_hash`, `salt` | `visibility` ∈ `full` / `technician` / `commercial`. Hash and salt are nullable: the dataset ships people, not credentials. |
+| `users`          | `id` (`USR-001`), `company_id` → companies, first/last name, `email` (UNIQUE), job title, `visibility`, `password_hash`, `salt` | `visibility` ∈ `full` / `technician` / `commercial` / `guest` (`guest` only for the seeded `USR-G…` accounts). Hash and salt are nullable: the dataset ships people, not credentials. |
 | `machine_models` | `id` (`MDL-100`), model code, description, `primitive_diameter`, nominal heads, container/cap type, industry segment, notes | Catalogue-level specification. `primitive_diameter` is NULL for the single-head turrets. |
 | `machines`       | `id` (`MCH-0001`), `company_id` → companies, `model_id` → machine_models, `serial_number` (UNIQUE), `delivery_date` (date), plant location, configuration profile, `plc_family`, `software_version` | The physical unit. `plc_family` ∈ `SIEMENS-SIMATIC-S7` / `LINE-PLC-INTEGRATED` / `HARDWIRED-CONTROL-PANEL`. `software_version` is NULL when the machine has none. |
 | `manuals`        | `id` (UUID), `machine_id` → machines (UNIQUE), `filename` (UNIQUE), `storage_path`, content type, size, uploaded at, language, title | One manual per machine, exactly. |
 | `sessions`       | `id` (SHA-256 of the token), `user_id` → users, created at, expires at | Model class `AuthSession`, to stay distinct from DB sessions and chat threads. |
-| `conversations`  | `thread_id` (UUID), `user_id` → users, `machine_id` → machines, created at | Ownership of a chat thread; the messages themselves live in the checkpoint DB. |
+| `conversations`  | `thread_id` (UUID), `user_id` → users, `machine_id` → machines, `preview`, created at | Ownership of a chat thread; the messages themselves live in the checkpoint DB. `preview` is the start of the first question (max 120 chars), stored at creation so a list is one query. |
 
 Design decisions worth knowing:
 
@@ -413,7 +454,9 @@ this turn), `thread_id` (UUID).
 }
 ```
 
-**Errors**: `401` not logged in; `404` machine not in the user's company, or
+**Errors**: `401` not logged in; `403` guest account (the assistant is closed
+to guests, also on the stream and history endpoints); `404` machine not in the
+user's company, or
 thread not owned by the user / opened on another machine; `422` invalid body.
 
 > **Cross-service contract**: a manual source's `doc` must equal
@@ -440,6 +483,16 @@ frame `event: <type>\ndata: <json>\n\n`.
 **Frontend note**: `EventSource` only supports `GET`; read this `POST` stream
 with `fetch` + `ReadableStream` and parse the frames manually, with
 `credentials: "include"`.
+
+### `GET /v1/conversations?machine_id=MCH-0001`
+The caller's own conversations, **newest first**; `machine_id` is optional
+and narrows the list to one machine. The user comes from the session cookie,
+never from the request.
+
+**Returns** a list of `{ "thread_id": "<uuid>", "preview": "<start of the
+first question>", "created_at": "<UTC datetime>" }`. A `machine_id` that is
+not the caller's simply yields `[]`. `401` without a session, `403` for
+guest accounts.
 
 ### `GET /v1/conversations/{thread_id}/messages`
 Re-reads a past conversation for re-display.
@@ -597,6 +650,7 @@ EOF
 | `LANGFUSE_PUBLIC_KEY`          | Langfuse public key — **required**                       | `pk-lf-...` |
 | `LANGFUSE_SECRET_KEY`          | Langfuse secret key — **required**                       | `sk-lf-...` |
 | `LANGFUSE_HOST`                | Langfuse instance                                        | `http://localhost:3000` / `http://langfuse-web:3000` |
+| `GUEST_QR_BASE_URL`            | Frontend route encoded in the QR codes                   | `http://localhost:8080/m` |
 | `SESSION_COOKIE_SECURE`        | Mark the session cookie `Secure` (HTTPS only)            | `false` (set `true` behind HTTPS) |
 | `CHECKPOINT_DB_PATH`           | SQLite file with conversation checkpoints                | `backend/data/checkpoints.sqlite` |
 | `DOMAIN_DB_PATH`               | SQLite file with the domain DB                           | `backend/data/domain.sqlite` |
@@ -647,8 +701,6 @@ EOF
   evaluation of answers against their sources, which does not exist yet.
 - **`sources` is untyped** (`list[dict]`): a discriminated union on `kind`
   would document every variant in OpenAPI and validate it server-side.
-- **No conversation list endpoint** ("my conversations for this machine"),
-  though the `conversations` table already holds what it needs.
 - **No schema migrations** (Alembic): schema changes require deleting the DB.
 - **Manuals are a shared folder**: the target design (agents README, last
   section) is upload through the backend, which then asks the agents to index

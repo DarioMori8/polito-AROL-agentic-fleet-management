@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from typing import Annotated
 from uuid import UUID
@@ -62,6 +63,12 @@ class HistoryMessage(BaseModel):
     sources: list[dict] = []
     # Access denials that occurred in the turn this answer closes.
     denied: list[Denial] = []
+
+class ConversationSummary(BaseModel):
+    """One entry of the conversation list: enough to show it and reopen it."""
+    thread_id: UUID
+    preview: str
+    created_at: datetime        # UTC, serialized with its offset
 
 
 class ConversationHistory(BaseModel):

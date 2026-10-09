@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import ChatUser
-from app.models.chat import ChatRequest, ChatResponse, ConversationHistory
+from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, ConversationSummary
 from app.orchestrator.base import (
     ConversationNotFoundError,
     MachineNotFoundError,
@@ -114,6 +114,19 @@ async def chat_stream_endpoint(
 
 
 # --- History
+
+@router.get("/conversations", response_model=list[ConversationSummary])
+async def list_conversations(
+    user: ChatUser,
+    orchestrator: OrchestratorDep,
+    machine_id: str | None = None,
+) -> list[ConversationSummary]:
+    """
+    The caller's conversations, newest first. With ?machine_id=… only those
+    about that machine. The user is taken from the session cookie, never from
+    the request; guests get 403 like every other chat endpoint.
+    """
+    return await orchestrator.list_conversations(user, machine_id)
 
 @router.get("/conversations/{thread_id}/messages", response_model=ConversationHistory)
 async def get_conversation_history(

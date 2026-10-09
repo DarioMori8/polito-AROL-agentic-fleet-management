@@ -254,6 +254,9 @@ class AuthSession(SQLModel, table=True):
     expires_at: datetime = Field(sa_type=UTCDateTime)
 
 
+# Length of Conversation.preview, in characters.
+PREVIEW_MAX_CHARS = 120
+
 class Conversation(SQLModel, table=True):
     """
     Ownership record of one chat thread.
@@ -284,4 +287,8 @@ class Conversation(SQLModel, table=True):
     machine_id: str = Field(
         foreign_key="machines.id", ondelete="RESTRICT", index=True
     )
+    # Short label for conversation lists: the start of the first question,
+    # stored once when the thread is created. Kept here (not read from the
+    # checkpoint DB) so listing N conversations is one query, not N.
+    preview: str = Field(default="", max_length=PREVIEW_MAX_CHARS)
     created_at: datetime = Field(default_factory=_utc_now, sa_type=UTCDateTime)
