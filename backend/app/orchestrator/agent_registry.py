@@ -2,11 +2,13 @@ import json
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langfuse import get_client
 
 from app.clients.docs_client import DocsClient
 from app.clients.exceptions import AgentUnavailableError
 from app.clients.iot_client import IoTClient
 from app.clients.manuals_client import ManualsClient
+from app.observability import traced_agent_search
 from app.security.access import DataDomain, denial_message, is_allowed
 
 manuals_client = ManualsClient()
@@ -35,6 +37,9 @@ def _result(artifact: dict) -> tuple[str, dict]:
 
 
 def _error(message: str) -> tuple[str, dict]:
+    # These failures are returned as tool results, so the callback does not
+    # receive an exception. Explicitly mark the active tool observation.
+    get_client().update_current_span(level="ERROR", status_message=message)
     return _result({"error": message})
 
 
@@ -83,7 +88,9 @@ async def search_manuals(query: str, config: RunnableConfig) -> tuple[str, dict]
         return denied
     machine_id, _ = _scope(config)
     try:
-        result = await manuals_client.search(query=query, machine_id=machine_id)
+        result = await traced_agent_search(
+            manuals_client, config, query=query, machine_id=machine_id,
+        )
     except AgentUnavailableError as exc:
         return _error(f"The Manuals service is not available: {exc}")
 
@@ -112,7 +119,8 @@ async def search_docs(query: str, config: RunnableConfig) -> tuple[str, dict]:
         return denied
     machine_id, company_id = _scope(config)
     try:
-        result = await docs_client.search(
+        result = await traced_agent_search(
+            docs_client, config,
             query=query, machine_id=machine_id, company_id=company_id
         )
     except AgentUnavailableError as exc:
@@ -148,7 +156,9 @@ async def search_iot(query: str, config: RunnableConfig) -> tuple[str, dict]:
         return denied
     machine_id, _ = _scope(config)
     try:
-        result = await iot_client.search(query=query, machine_id=machine_id)
+        result = await traced_agent_search(
+            iot_client, config, query=query, machine_id=machine_id,
+        )
     except AgentUnavailableError as exc:
         return _error(f"The IoT service is not available: {exc}")
 

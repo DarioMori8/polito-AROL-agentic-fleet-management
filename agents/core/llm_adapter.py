@@ -4,6 +4,7 @@ import httpx
 from pydantic import BaseModel
 
 from core.config import settings
+from core.observability import get_langfuse
 
 
 class ToolCall(BaseModel):
@@ -40,19 +41,32 @@ class OllamaAdapter(LLMAdapter):
         if tools:
             payload["tools"] = tools
 
-        async with httpx.AsyncClient(timeout=100) as client:
-            r = await client.post(f"{self.base_url}/api/chat", json=payload)
-            r.raise_for_status()
+        with get_langfuse().start_as_current_observation(
+            name="ollama.chat", as_type="generation", model=self.model,
+            input={"messages": messages, "tools": tools},
+            model_parameters=payload["options"],
+        ) as generation:
+            async with httpx.AsyncClient(timeout=100) as client:
+                r = await client.post(f"{self.base_url}/api/chat", json=payload)
+                r.raise_for_status()
 
-        message = r.json()["message"]
-        tool_calls = [
-            ToolCall(name=tc["function"]["name"], arguments=tc["function"]["arguments"])
-            for tc in message.get("tool_calls", [])
-        ]
-        return LLMResponse(
-            content=message.get("content"), thinking=message.get("thinking"),
-            tool_calls=tool_calls,
-        )
+            data = r.json()
+            message = data["message"]
+            tool_calls = [
+                ToolCall(name=tc["function"]["name"], arguments=tc["function"]["arguments"])
+                for tc in message.get("tool_calls", [])
+            ]
+            response = LLMResponse(
+                content=message.get("content"), thinking=message.get("thinking"),
+                tool_calls=tool_calls,
+            )
+            usage = {
+                target: data[source]
+                for source, target in (("prompt_eval_count", "input"), ("eval_count", "output"))
+                if isinstance(data.get(source), int)
+            }
+            generation.update(output=message, usage_details=usage or None)
+            return response
 
 
 def get_llm_adapter() -> LLMAdapter:

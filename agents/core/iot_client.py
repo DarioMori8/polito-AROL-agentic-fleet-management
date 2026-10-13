@@ -1,6 +1,7 @@
 import httpx
 
 from core.config import settings
+from core.observability import get_langfuse
 
 
 OPERATIONAL_STATUSES = (
@@ -127,10 +128,17 @@ class IoTClient:
 
     async def _get(self, path: str, params: dict) -> dict:
         params = _clean_params(params)
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=20.0) as client:
-            response = await client.get(path, params=params)
-            response.raise_for_status()
-            return response.json()
+        with get_langfuse().start_as_current_observation(
+            name="backoffice.iot.get", as_type="span",
+            input={"path": path, "params": params},
+        ) as observation:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=20.0) as client:
+                response = await client.get(path, params=params)
+                observation.update(metadata={"http_status": response.status_code})
+                response.raise_for_status()
+                data = response.json()
+                observation.update(output=data)
+                return data
 
 
 _client: IoTClient | None = None

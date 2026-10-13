@@ -162,6 +162,11 @@ export default function WorkspaceWrapper() {
             machineId: id,
             messageId: aiMessageId,
             sessionId: currentSessionId,
+            onReset: () => {
+                setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessageId ? { ...msg, text: '', thinkingText: '' } : msg
+                ));
+            },
             onSessionCreated: (newSessionId) => {
                 // Update local UI state with the new session.
                 // The backend records the thread on the first turn

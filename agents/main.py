@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from contracts import (
     SearchDocsResponse,
@@ -8,10 +11,23 @@ from contracts import (
     SearchManualTask,
 )
 from core.llm_adapter import OllamaAdapter
+from core.observability import AgentTraceContextMiddleware, get_langfuse
 from manuals_agent.agent import ManualsAgent
 from docs_agent.agent import DocsAgent
 from iot_agent.agent import IoTAgent
-app = FastAPI(title="AROL Agents Service")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    client = get_langfuse()
+    try:
+        yield
+    finally:
+        await asyncio.to_thread(client.shutdown)
+
+
+app = FastAPI(title="AROL Agents Service", lifespan=lifespan)
+app.add_middleware(AgentTraceContextMiddleware)
 
 adapter = OllamaAdapter()
 

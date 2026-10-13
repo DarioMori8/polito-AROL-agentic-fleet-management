@@ -45,6 +45,7 @@ export default function useChatStream() {
      * @param {string} sessionId - Optional past session ID to resume from.
      * @param {Function} onToken - Callback triggered when a new text chunk is parsed: (tokenText) => {}
      * @param {Function} onThinking - Callback for reasoning chunks
+     * @param {Function} onReset - Clear partial output when the backend recovers a failed generation.
      * @param {Function} onComplete - Callback triggered when the stream ends: (finalMessageObject) => {}
      * @param {Function} onError - Callback triggered on connection/parsing failure.
      * @param {Function} onSessionCreated - Callback triggered when the backend emits a session_id.
@@ -56,6 +57,7 @@ export default function useChatStream() {
         sessionId,
         onToken,
         onThinking,
+        onReset,
         onComplete,
         onError,
         onSessionCreated
@@ -240,6 +242,11 @@ export default function useChatStream() {
                             if (onThinking && parsedData.text) {
                                 onThinking(parsedData.text);
                             }
+                            break;
+
+                        case 'reset':
+                            accumulatedText = '';
+                            if (onReset) onReset();
                             break;
 
                         case 'token':

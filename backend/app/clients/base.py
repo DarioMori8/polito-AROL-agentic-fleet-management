@@ -1,11 +1,13 @@
 from typing import ClassVar, Generic, TypeVar
 
 import httpx
+from langfuse import get_client
 from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
 from app.clients.exceptions import AgentUnavailableError
+from app.observability import agent_trace_headers
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -25,7 +27,7 @@ class HttpAgentClient(Generic[T]):
     response_schema: ClassVar[type[BaseModel]]
     agent_name: ClassVar[str]
 
-    timeout_seconds: ClassVar[float] = 30.0
+    timeout_seconds: ClassVar[float] = 60.0
 
     def __init__(self, base_url: str | None = None):
         # Injectable for tests; defaults to the configured agents service.
@@ -41,10 +43,17 @@ class HttpAgentClient(Generic[T]):
         reraise=True,
     )
     async def _post(self, url: str, payload: dict) -> httpx.Response:
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(url, json=payload)
-        response.raise_for_status()
-        return response
+        # A separate child observation for every network attempt. The context
+        # is captured here, under the current tool, never in a global trace id.
+        with get_client().start_as_current_observation(
+            name=f"{self.agent_name}.http", as_type="span",
+            input=payload, metadata={"method": "POST", "url": url},
+        ) as observation:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                response = await client.post(url, json=payload, headers=agent_trace_headers())
+            observation.update(metadata={"http_status": response.status_code})
+            response.raise_for_status()
+            return response
 
     async def _request(self, payload: dict) -> T:
         """

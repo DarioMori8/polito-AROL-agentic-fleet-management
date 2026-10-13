@@ -1,6 +1,7 @@
 import httpx
 
 from core.config import settings
+from core.observability import get_langfuse
 
 # The dataset spells its controlled vocabularies with capitals and spaces. A model
 # asked for "still open orders" will happily produce "in_production" or "closed",
@@ -71,10 +72,17 @@ class DocsClient:
     async def _get(self, path: str, params: dict) -> list[dict]:
         # Unset filters are dropped so they are not sent as empty query values.
         params = {k: v for k, v in params.items() if v is not None}
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=10.0) as client:
-            response = await client.get(path, params=params)
-            response.raise_for_status()
-            return response.json()["results"]
+        with get_langfuse().start_as_current_observation(
+            name="backoffice.docs.get", as_type="span",
+            input={"path": path, "params": params},
+        ) as observation:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=10.0) as client:
+                response = await client.get(path, params=params)
+                observation.update(metadata={"http_status": response.status_code})
+                response.raise_for_status()
+                results = response.json()["results"]
+                observation.update(output=results)
+                return results
 
 
 _client: DocsClient | None = None

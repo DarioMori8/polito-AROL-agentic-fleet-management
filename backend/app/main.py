@@ -1,8 +1,10 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langfuse import get_client
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.chat import router as chat_router
@@ -25,12 +27,13 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()      # domain tables: created only if missing
     await seed_data()
 
-    async with build_graph() as graph:
-        app.state.orchestrator = LangGraphOrchestrator(graph, async_session_factory)
-        yield
-    # --- shutdown (the checkpointer is closed by the `async with` above)
-
-    await engine.dispose()            # close pooled DB connections cleanly
+    try:
+        async with build_graph() as graph:
+            app.state.orchestrator = LangGraphOrchestrator(graph, async_session_factory)
+            yield
+    finally:
+        await engine.dispose()
+        await asyncio.to_thread(get_client().shutdown)
 
 
 app = FastAPI(title="AROL Customer Platform API", lifespan=lifespan)

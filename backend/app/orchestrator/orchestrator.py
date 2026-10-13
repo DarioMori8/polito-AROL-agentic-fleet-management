@@ -1,18 +1,19 @@
 import json
 import logging
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from pathlib import Path
 from typing import Annotated, AsyncIterator, TypedDict
 from uuid import UUID
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_ollama import ChatOllama
-from langfuse.langchain import CallbackHandler
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.config import get_stream_writer
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+from ollama import ResponseError as OllamaResponseError
 
 from app.config import settings
 from sqlmodel import select
@@ -21,6 +22,7 @@ from sqlmodel import select
 from app.db.models import PREVIEW_MAX_CHARS,Conversation, User
 from app.models.chat import ChatRequest, ChatResponse, ConversationHistory, ConversationSummary, Denial, HistoryMessage, MessageRole
 from app.orchestrator.agent_registry import AGENT_TOOLS
+from app.observability import graph_trace_context, isolated_trace_stream, new_callback_handler
 from app.orchestrator.base import (
     ConversationNotFoundError,
     MachineNotFoundError,
@@ -34,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are the routing brain of the AROL Customer Platform assistant.
 
-You do not answer technical questions on your own initiative. For every
+You do not answer technical questions on your own initiative. Consider today as the 4th of august. For every
 user message you choose exactly one of four actions:
 
 1. ROUTE — the message contains a concrete, searchable technical intent
@@ -118,19 +120,26 @@ class OrchestratorState(TypedDict):
 
 
 def _build_llm():
-    # bind_tools sends the tool schemas to the model with every call.
     return ChatOllama(
         model=settings.ORCHESTRATOR_OLLAMA_MODEL,
         base_url=settings.ORCHESTRATOR_OLLAMA_BASE_URL,
         num_ctx=settings.ORCHESTRATOR_NUM_CTX,
         reasoning=True,
-    ).bind_tools(AGENT_TOOLS)
+    )
 
 
-_llm_with_tools = _build_llm()
+_llm = _build_llm()
+# Keep a tool-free model for a bounded recovery after Ollama rejects a
+# generated tool call. It receives the same conversation and grounding rules.
+_llm_with_tools = _llm.bind_tools(AGENT_TOOLS)
 
-# Reads its credentials from os.environ (see the bridge at the end of config.py).
-_langfuse_handler = CallbackHandler()
+_FINAL_SYNTHESIS_INSTRUCTION = """
+The tool-selection generation failed. Finish this turn with a plain-text answer
+using only the tool results already present in this conversation. Do not call
+or describe new tool calls. If the available results are insufficient, explain
+what is missing; do not invent facts. Preserve access denials. Answer the latest
+user question in the language in which the user asked it.
+"""
 
 
 async def _agent_node(state: OrchestratorState) -> dict:
@@ -143,7 +152,26 @@ async def _agent_node(state: OrchestratorState) -> dict:
     prompt change applies to old conversations too.
     """
     messages = [_SYSTEM_MESSAGE, *state["messages"]]
-    response = await _llm_with_tools.ainvoke(messages)
+    try:
+        response = await _llm_with_tools.ainvoke(messages)
+    except OllamaResponseError as exc:
+        # Ollama can emit prose into its JSON tool parser (including in a
+        # streaming response with status -1). Recover only this specific error,
+        # and only after this turn has actually collected tool results.
+        has_results = any(isinstance(m, ToolMessage) for m in _current_turn(state["messages"]))
+        if not exc.error.lower().startswith("error parsing tool call") or not has_results:
+            raise
+        logger.warning("Ollama tool-call parsing failed; synthesizing existing tool results once")
+        # Discard any partial text from the failed generation in streaming
+        # clients. The invalid raw output is never reused as evidence or code.
+        get_stream_writer()({"type": "reset"})
+        response = await _llm.ainvoke(
+            [SystemMessage(content=SYSTEM_PROMPT + _FINAL_SYNTHESIS_INSTRUCTION), *state["messages"]],
+            config={
+                "run_name": "orchestrator.final_synthesis_recovery",
+                "metadata": {"recovery_reason": "ollama_tool_parse_error"},
+            },
+        )
     return {"messages": [response]}
 
 
@@ -351,7 +379,8 @@ class LangGraphOrchestrator(Orchestrator):
         return {
             # Each agent->tools round trip executes two nodes.
             "recursion_limit": settings.ORCHESTRATOR_MAX_ITERATIONS * 2 + 1,
-            "callbacks": [_langfuse_handler],
+            "run_name": "orchestrator",
+            "callbacks": [new_callback_handler()],
             # thread_id selects the checkpoint; company_id, machine_id and
             # visibility are read by the tools and never exposed to the model.
             "configurable": {
@@ -370,10 +399,11 @@ class LangGraphOrchestrator(Orchestrator):
     # --- Phase 2: execution
 
     async def handle(self, context: TurnContext, query: str) -> ChatResponse:
-        result = await self._graph.ainvoke(
-            {"messages": [HumanMessage(content=query)]},
-            config=self._run_config(context),
-        )
+        with graph_trace_context():
+            result = await self._graph.ainvoke(
+                {"messages": [HumanMessage(content=query)]},
+                config=self._run_config(context),
+            )
         messages = result["messages"]
         turn = _current_turn(messages)
         return ChatResponse(
@@ -386,7 +416,7 @@ class LangGraphOrchestrator(Orchestrator):
     async def handle_stream(self, context: TurnContext, query: str) -> AsyncIterator[dict]:
         """
         Streaming variant of handle(). Yields semantic events as the graph
-        runs: start / thinking / token / status / denied / error / sources / done.
+        runs: start / thinking / token / reset / status / denied / error / sources / done.
         Serializing them into SSE is the endpoint's job: this method stays
         transport-agnostic.
         """
@@ -396,52 +426,58 @@ class LangGraphOrchestrator(Orchestrator):
         sources: list[dict] = []
 
         try:
-            async for stream_mode, payload in self._graph.astream(
+            stream = isolated_trace_stream(self._graph.astream(
                 {"messages": [HumanMessage(content=query)]},
                 config=self._run_config(context),
-                stream_mode=["messages", "updates"],
-            ):
-                # --- LLM output chunks, only from the "agent" node
-                if stream_mode == "messages":
-                    chunk, metadata = payload
-                    if metadata.get("langgraph_node") != "agent":
-                        continue
+                stream_mode=["messages", "updates", "custom"],
+            ))
+            async with aclosing(stream):
+                async for stream_mode, payload in stream:
+                    if stream_mode == "custom":
+                        if isinstance(payload, dict) and payload.get("type") == "reset":
+                            yield {"type": "reset"}
 
-                    reasoning = chunk.additional_kwargs.get("reasoning_content")
-                    if reasoning:
-                        yield {"type": "thinking", "text": reasoning}
-                    if chunk.content:
-                        yield {"type": "token", "text": chunk.content}
-
-                # --- Node completions: tool calls, tool results
-                elif stream_mode == "updates":
-                    for _node_name, node_update in payload.items():
-                        if not isinstance(node_update, dict):
+                    # --- LLM output chunks, only from the "agent" node
+                    elif stream_mode == "messages":
+                        chunk, metadata = payload
+                        if metadata.get("langgraph_node") != "agent":
                             continue
-                        # With parallel tool calls the "tools" update holds
-                        # several ToolMessages: every one must be read.
-                        for msg in node_update.get("messages", []):
-                            # The model decided to call a tool: announce it,
-                            # so the silent HTTP call does not look like a freeze.
-                            for tc in getattr(msg, "tool_calls", None) or []:
-                                yield {
-                                    "type": "status",
-                                    "tool": tc["name"],
-                                    "message": f"Consulting {tc['name']}...",
-                                }
-                            # A tool finished: read its structured artifact.
-                            # An access denial: emitted by code, so the
-                            # client learns about it deterministically.
-                            if (denial := _denial_of(msg)) is not None:
-                                yield {"type": "denied", **denial.model_dump()}
-                            if isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict):
-                                if "error" in msg.artifact:
+
+                        reasoning = chunk.additional_kwargs.get("reasoning_content")
+                        if reasoning:
+                            yield {"type": "thinking", "text": reasoning}
+                        if chunk.content:
+                            yield {"type": "token", "text": chunk.content}
+
+                    # --- Node completions: tool calls, tool results
+                    elif stream_mode == "updates":
+                        for _node_name, node_update in payload.items():
+                            if not isinstance(node_update, dict):
+                                continue
+                            # With parallel tool calls the "tools" update holds
+                            # several ToolMessages: every one must be read.
+                            for msg in node_update.get("messages", []):
+                                # The model decided to call a tool: announce it,
+                                # so the silent HTTP call does not look like a freeze.
+                                for tc in getattr(msg, "tool_calls", None) or []:
                                     yield {
-                                        "type": "error",
-                                        "recoverable": True,
-                                        "message": msg.artifact["error"],
+                                        "type": "status",
+                                        "tool": tc["name"],
+                                        "message": f"Consulting {tc['name']}...",
                                     }
-                                sources.extend(normalize_artifact(msg.artifact))
+                                # A tool finished: read its structured artifact.
+                                # An access denial: emitted by code, so the
+                                # client learns about it deterministically.
+                                if (denial := _denial_of(msg)) is not None:
+                                    yield {"type": "denied", **denial.model_dump()}
+                                if isinstance(msg, ToolMessage) and isinstance(msg.artifact, dict):
+                                    if "error" in msg.artifact:
+                                        yield {
+                                            "type": "error",
+                                            "recoverable": True,
+                                            "message": msg.artifact["error"],
+                                        }
+                                    sources.extend(normalize_artifact(msg.artifact))
 
             yield {"type": "sources", "sources": _dedupe(sources)}
             yield {"type": "done", "thread_id": str(context.thread_id)}

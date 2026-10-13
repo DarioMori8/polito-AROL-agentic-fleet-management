@@ -107,37 +107,42 @@ docker compose logs -f langfuse-web
    pair: you'll get a `Public Key` (`pk-lf-...`) and a `Secret Key`
    (`sk-lf-...`)
 
-## 6. Wire the keys into the backend
+## 6. Wire the keys into the backend and agents
 
-These keys go into the **backend's `.env`**:
+For local processes, use the same project keys in **backend/.env** and
+**agents/.env**. For Docker Compose, put them in the repository root `.env`;
+Compose passes them to both services:
 
 ```dotenv
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=http://localhost:3000
+LANGFUSE_TRACING_ENABLED=true
 ```
 
 `app/config.py` reads these three variables and explicitly exports them
 into `os.environ` (necessary because Langfuse's `CallbackHandler()`
 reads them from there, not from pydantic's `settings` object — see the
 comments in `config.py` for the exact reason).
+The agents initialize their SDK directly from settings. The backend forwards
+the current tool's trace context in HTTP headers, so agent operations appear
+under the calling tool in the same trace. See `agents/README.md` for the full
+list of observations and the integration test command.
 
 
 ## 7. End-to-end verification
 
-Restart the backend, then fire a test request:
-
-```bash
-curl -X POST http://localhost:8000/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "perché la macchina non parte", "machine_id": "2"}'
-```
+Restart both services (rebuild the agents image after installing Langfuse),
+sign in to the application, select a machine and ask a question about its
+manual, commercial records, or alarms. The chat API requires an authenticated
+session and a machine belonging to that user's company.
 
 Open `http://localhost:3000` again → a new trace should appear (with a
 few seconds of delay, since ingestion is asynchronous). If nothing
 shows up, check these first:
 - Are the three `LANGFUSE_*` variables actually in the backend's `.env`?
-- Was the backend restarted after adding them?
+- Do the agents use the same host and project credentials?
+- Were both services restarted after adding them?
 - Does `docker compose ps` (inside `langfuse-local/`) show all 6
   services as `healthy`?
 
@@ -156,4 +161,3 @@ The path of a trace: the backend's `CallbackHandler` → `langfuse-web`
 (validates) → `redis` (queue) → `langfuse-worker` (picks it up) →
 `clickhouse` (durable write). This decoupling is why sending traces
 doesn't slow down your `/v1/chat` responses.
-
