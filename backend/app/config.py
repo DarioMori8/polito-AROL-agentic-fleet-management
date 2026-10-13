@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     LANGFUSE_SECRET_KEY: str
     # Docker: http://langfuse-web:3000 (service name via compose `include`).
     LANGFUSE_HOST: str = "http://localhost:3000"
+    LANGFUSE_TRACING_ENABLED: bool = True
 
     # --- Authentication
     # The session cookie is marked Secure only when this is True. Secure
@@ -104,3 +105,4 @@ settings = Settings()
 os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.LANGFUSE_PUBLIC_KEY)
 os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.LANGFUSE_SECRET_KEY)
 os.environ.setdefault("LANGFUSE_HOST", settings.LANGFUSE_HOST)
+os.environ.setdefault("LANGFUSE_TRACING_ENABLED", str(settings.LANGFUSE_TRACING_ENABLED).lower())

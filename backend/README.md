@@ -11,9 +11,16 @@ The orchestrator's reason -> act -> observe loop is a compiled **LangGraph**
 `tools_condition` loops back to the model until it answers in plain text.
 On top of the loop:
 
-- **Langfuse tracing** — a module-level `CallbackHandler` passed to the graph;
-  traces are grouped by user and by conversation.
+- **Langfuse tracing** — a callback per graph invocation, with W3C trace context
+  propagated over HTTP to the agents. Each turn has one trace containing the
+  orchestrator and agent operations; turns are grouped by user and conversation.
 - **Token-by-token streaming** of the answer over Server-Sent Events.
+- **Ollama tool-parser recovery** — if Ollama rejects a generated tool call
+  after this turn has collected tool results, synthesize once without tool
+  schemas, using those same results. The failed generation and the named
+  `orchestrator.final_synthesis_recovery` attempt both remain in Langfuse.
+  Streaming clients receive `reset` before replacement tokens, so partial
+  output from the failed attempt is not appended to the final answer.
 - **Durable checkpointing** — the graph is compiled with an `AsyncSqliteSaver`,
   so turns sharing a `thread_id` accumulate into one conversation that
   survives a process restart. A **history endpoint** reads it back.
@@ -432,6 +439,7 @@ frame `event: <type>\ndata: <json>\n\n`.
 | `thinking` | While the model reasons | `{ "type": "thinking", "text": "<chunk>" }` — show collapsed/greyed |
 | `status`   | When the model calls a tool | `{ "type": "status", "tool": "search_manuals", "message": "Consulting search_manuals..." }` |
 | `token`    | While the answer is generated | `{ "type": "token", "text": "<chunk>" }` — concatenate to rebuild the answer |
+| `reset`    | A failed generation is being recovered | `{ "type": "reset" }` — clear accumulated answer and thinking text before consuming replacement tokens |
 | `denied`   | When a tool call is refused by the access model | `{ "type": "denied", "tool": "search_iot", "domain": "operational", "message": "..." }` — emitted by code, show as a distinct notice |
 | `error`    | Agent failure (recoverable) or graph failure (fatal) | `{ "type": "error", "recoverable": true\|false, "message": "..." }` — fatal errors carry a generic message; details go to the log |
 | `sources`  | Once, after the graph ends | `{ "type": "sources", "sources": [ ... ] }` |
@@ -597,6 +605,7 @@ EOF
 | `LANGFUSE_PUBLIC_KEY`          | Langfuse public key — **required**                       | `pk-lf-...` |
 | `LANGFUSE_SECRET_KEY`          | Langfuse secret key — **required**                       | `sk-lf-...` |
 | `LANGFUSE_HOST`                | Langfuse instance                                        | `http://localhost:3000` / `http://langfuse-web:3000` |
+| `LANGFUSE_TRACING_ENABLED`     | Enable tracing; set `false` to disable it locally         | `true` |
 | `SESSION_COOKIE_SECURE`        | Mark the session cookie `Secure` (HTTPS only)            | `false` (set `true` behind HTTPS) |
 | `CHECKPOINT_DB_PATH`           | SQLite file with conversation checkpoints                | `backend/data/checkpoints.sqlite` |
 | `DOMAIN_DB_PATH`               | SQLite file with the domain DB                           | `backend/data/domain.sqlite` |

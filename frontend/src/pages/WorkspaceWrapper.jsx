@@ -156,6 +156,11 @@ export default function WorkspaceWrapper() {
             machineId: id,
             messageId: aiMessageId,
             sessionId: currentSessionId,
+            onReset: () => {
+                setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessageId ? { ...msg, text: '', thinkingText: '' } : msg
+                ));
+            },
             onSessionCreated: (newSessionId) => {
                 // If it's a new session, update our state and localStorage
                 if (newSessionId !== currentSessionId) {

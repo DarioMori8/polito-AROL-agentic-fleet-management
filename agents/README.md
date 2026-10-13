@@ -10,6 +10,58 @@ Questo servizio contiene **tre agenti**, tutti esposti come endpoint HTTP:
 
 Il `mock-backoffice` serve a tutti: Docs e IoT lo interrogano a ogni domanda; il Manuals Agent lo usa durante l'ingestion per risolvere il serial number nel `machineId`.
 
+## Tracciamento Langfuse
+
+Orchestrator e agent pubblicano le osservazioni nello **stesso progetto Langfuse**.
+Ogni turno della conversazione ha una traccia distinta; `session_id` corrisponde
+al `thread_id` della conversazione. Il backend invia il contesto W3C negli header
+`traceparent` e `baggage`; il servizio agents lo ripristina per la singola richiesta.
+Il body delle API e le risposte degli agent restano quelli dei contratti condivisi.
+
+La traccia comprende l'agent, ogni iterazione, le chiamate Ollama con modello e
+token disponibili, i tool, le richieste al backoffice, il recupero dei manuali,
+gli embedding e la costruzione della risposta. Le eccezioni e i risultati di
+errore dei tool sono segnalati nelle osservazioni. I vettori di embedding sono
+rappresentati da numero e dimensione, senza salvarne tutti i valori.
+
+Per avviare i servizi localmente, aggiungi a `agents/.env` le stesse credenziali
+di `backend/.env`:
+
+```dotenv
+LANGFUSE_HOST=http://localhost:3000
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_TRACING_ENABLED=true
+```
+
+Docker Compose passa già queste variabili a entrambi i servizi dal `.env` della
+radice. Dopo aver aggiornato le dipendenze, ricostruisci le immagini:
+
+```bash
+docker compose up -d --build backend agents
+```
+
+Senza credenziali gli agent funzionano senza tracing. Per disabilitarlo
+esplicitamente imposta `LANGFUSE_TRACING_ENABLED=false`. Una chiamata diretta a un
+agent senza `traceparent` valido genera una traccia indipendente. I dati di
+tracing negli header non sostituiscono i campi di autorizzazione del task.
+
+Per verificare il risultato, invia dalla chat una domanda che richieda un tool,
+apri il turno in Langfuse e controlla la gerarchia
+`orchestrator → search_* → *.http → Agent → iterazioni / tool / LLM`.
+L'acquisizione è asincrona: può essere necessario attendere alcuni secondi.
+I tipi `agent`, `tool`, `chain`, `retriever` ed `embedding` permettono alla vista
+grafo di distinguere le operazioni. Nelle versioni che offrono la vista
+**Expanded**, usala per vedere separatamente le chiamate ripetute.
+
+I test di integrazione usano SDK Langfuse, LangGraph e endpoint ASGI reali,
+simulando solo Ollama e backoffice; le osservazioni vengono raccolte in memoria.
+Da un ambiente con le dipendenze di entrambi i servizi, nella radice del repo:
+
+```bash
+PYTHONPATH=backend:agents python -m unittest discover -s tests -v
+```
+
 ## Prerequisiti
 
 - Git installato
