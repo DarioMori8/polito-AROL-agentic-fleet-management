@@ -1,0 +1,41 @@
+# Single .dockerignore: every image is built with the repo root as context
+# (see docker-compose.yml), so this file applies to all of them.
+
+# VCS, editor, local files
+.git
+.gitignore
+.dockerignore
+.claude
+.vscode
+.idea
+**/.DS_Store
+temp
+*.log
+
+# Secrets: the containers get their variables from docker-compose
+.env
+.env.*
+
+# Python
+**/venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+
+# Node / frontend build output (rebuilt inside the image)
+**/node_modules
+frontend/dist
+frontend/storybook-static
+frontend/coverage
+
+# Runtime data: mounted as volumes or rebuilt at startup
+data
+backend/data
+agents/data
+mock-backoffice/data
+
+# Not part of any image
+langfuse-local
+tests
+**/README.md

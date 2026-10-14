@@ -1,12 +1,21 @@
-fastapi>=0.115
-uvicorn[standard]>=0.32
-pydantic>=2.9
-pydantic-settings>=2.6
-httpx>=0.27
-python-dotenv>=1.0
+# Direct dependencies only, pinned. Shared libraries use the same version in
+# backend, agents and mock-backoffice.
+-e ../shared/contracts
+
+# API
+fastapi==0.143.1
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+
+# RAG (ollama is needed by chromadb's OllamaEmbeddingFunction)
+chromadb==1.5.9
+ollama==0.6.3
+pymupdf==1.28.2
+
+# Backoffice client
+httpx==0.28.1
+
+# Tracing
 langfuse==4.14.1
 opentelemetry-api==1.44.0
-chromadb>=0.5
-ollama>=0.4
-pymupdf>=1.24
--e ../shared/contracts

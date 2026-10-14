@@ -1,13 +1,15 @@
+# Built with the repo root as context (see docker-compose.yml).
+
 # --- STAGE 1: Build the static assets ---
 FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy dependency manifests first for efficient layer caching
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm ci
 
 # Copy source files and configuration
-COPY . .
+COPY frontend/ .
 
 # Build the application with production optimizations
 RUN npm run build
@@ -23,7 +25,7 @@ RUN rm -rf ./*
 COPY --from=builder /app/dist .
 
 # Copy custom Nginx configuration to support client-side routing redirects (SPA)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 3000
 

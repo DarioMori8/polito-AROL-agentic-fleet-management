@@ -1,8 +1,15 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The single .env of the project lives at the repo root (<repo>/agents/core/config.py
+# -> <repo>/.env). In the container this path does not exist and the variables
+# come from docker-compose.
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     LLM_PROVIDER: str = "ollama"  
 

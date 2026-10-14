@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from contracts import IoTObservation, SearchIoTResponse, SearchIoTTask
 
 from core.base_agent import BaseAgent
@@ -24,6 +26,16 @@ def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(parsed, maximum))
 
 
+def _parse_iso(value) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=None)
+
+
 class IoTAgent(BaseAgent):
     @property
     def system_prompt(self) -> str:
@@ -35,6 +47,8 @@ class IoTAgent(BaseAgent):
 
     async def run(self, task: SearchIoTTask) -> SearchIoTResponse:
         self._task = task
+        self._latest_snapshot: datetime | None = None
+        self._latest_snapshot_loaded = False
         return await super().run(task)
 
     def _user_message(self, task: SearchIoTTask) -> str:
@@ -46,6 +60,7 @@ class IoTAgent(BaseAgent):
         # The machine id comes from trusted request context. It is deliberately
         # absent from every LLM-facing tool schema, so the model cannot cross it.
         machine_id = self._task.machine_id
+        args, note = await self._guard_explicit_bounds(client, tool_call.name, args)
 
         if tool_call.name == "analyze_machine_health":
             data = await client.get_health(
@@ -87,7 +102,54 @@ class IoTAgent(BaseAgent):
         else:
             return {"error": f"unknown tool: {tool_call.name}"}
 
-        return {"tool": tool_call.name, "data": data}
+        result = {"tool": tool_call.name, "data": data}
+        if note:
+            result["note"] = note
+        return result
+
+    async def _guard_explicit_bounds(
+        self, client, tool_name: str, args: dict
+    ) -> tuple[dict, str | None]:
+        """Drop explicit bounds that start after the newest dataset snapshot.
+
+        The model sees the wall-clock date (the Ollama chat template injects
+        it) and sometimes turns "today" or "recent" into absolute dates. The
+        synthetic dataset ended earlier, so such a range is always empty and
+        would be reported as "no data". Falling back to the rolling window,
+        which the backoffice anchors to the newest snapshot, answers the
+        question that was actually asked.
+        """
+        start_key, end_key = (
+            ("from_date", "to_date")
+            if tool_name == "search_maintenance"
+            else ("from_timestamp", "to_timestamp")
+        )
+        start = _parse_iso(args.get(start_key))
+        if start is None:
+            return args, None
+        latest = await self._latest_snapshot_for(client)
+        if latest is None or start <= latest:
+            return args, None
+        guarded = {k: v for k, v in args.items() if k not in (start_key, end_key)}
+        return guarded, (
+            f"Requested range starting {args.get(start_key)} is after the newest "
+            f"snapshot in the dataset ({latest.isoformat(timespec='minutes')}); "
+            "ignored it and used the rolling window ending at that snapshot."
+        )
+
+    async def _latest_snapshot_for(self, client) -> datetime | None:
+        if not self._latest_snapshot_loaded:
+            self._latest_snapshot_loaded = True
+            try:
+                health = await client.get_health(
+                    machine_id=self._task.machine_id, window_hours=1
+                )
+                self._latest_snapshot = _parse_iso(health["window"]["to"])
+            except Exception:
+                # Without the anchor, keep the model's bounds rather than
+                # failing the tool call.
+                self._latest_snapshot = None
+        return self._latest_snapshot
 
     async def _analyze_alarm_ticket_coverage(
         self, client, args: dict, machine_id: str

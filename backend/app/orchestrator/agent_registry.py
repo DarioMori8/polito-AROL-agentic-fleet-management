@@ -94,11 +94,18 @@ async def search_manuals(query: str, config: RunnableConfig) -> tuple[str, dict]
     except AgentUnavailableError as exc:
         return _error(f"The Manuals service is not available: {exc}")
 
-    return _result({
+    artifact = {
         "answer": result.answer,
         "citations": [c.model_dump() for c in result.citations],
         "confidence": result.confidence,
-    })
+    }
+    # Full snippets stay in the artifact for the UI; the routing model only
+    # needs doc and page, so repeated excerpts do not flood its context.
+    content = {
+        **artifact,
+        "citations": [{"doc": c.doc, "page": c.page} for c in result.citations],
+    }
+    return json.dumps(content, ensure_ascii=False), artifact
 
 
 @tool(response_format="content_and_artifact")

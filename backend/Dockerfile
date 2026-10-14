@@ -1,22 +1,17 @@
-# Base image: Python 3.12 slim (smaller footprint than the full image)
+# Built with the repo root as context (see docker-compose.yml).
 FROM python:3.12-slim
 
-# Set working directory inside the container
 WORKDIR /app
 
-# Copy only requirements first (see explanation below on layer caching)
-COPY requirements.txt .
+# Shared schemas, installed by requirements.txt as -e ../shared/contracts
+COPY shared/contracts /shared/contracts
 
-COPY --from=contracts . /shared/contracts   
-
-# Install dependencies
+# Dependencies first, so code changes don't invalidate the pip layer
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Now copy the rest of the application code
-COPY . .
+COPY backend/ .
 
-# Expose the port uvicorn will listen on
 EXPOSE 8000
 
-# Start the FastAPI app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

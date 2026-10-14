@@ -1,14 +1,16 @@
+# Built with the repo root as context (see docker-compose.yml).
 FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Shared schemas, installed by requirements.txt as -e ../shared/contracts
+COPY shared/contracts /shared/contracts
 
-COPY --from=contracts . /shared/contracts   
-
+# Dependencies first, so code changes don't invalidate the pip layer
+COPY agents/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY agents/ .
 
 EXPOSE 8001
 

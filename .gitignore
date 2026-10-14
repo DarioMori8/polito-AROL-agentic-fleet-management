@@ -1,3 +1,5 @@
+# Single .gitignore for the whole repository.
+
 # Python
 .venv/
 venv/
@@ -8,35 +10,40 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 
+# Node / frontend build
+node_modules/
+dist/
+dist-ssr/
+storybook-static/
+coverage/
+*.local
+
+# Logs
+*.log
+
 # Env / secrets
 .env
 .env.*
 !.env.example
 
-# Generated / non-distributable data.
-# Listed one by one on purpose: a bare `data/` would also swallow the seed files
-# in mock-backoffice/data, and git cannot re-include a file once its parent
-# directory is excluded, so a `!` rule would not bring them back.
-# machine manuals: 73 MB, AROL property
+# Generated / non-distributable data
+# manuals (AROL property), domain DB + checkpoints + guest QR URLs,
+# Chroma index, mock-backoffice SQLite rebuilt from the workbook
 /data/
-backend/data
-# Chroma index, rebuilt by the ingestion
+backend/data/
 agents/data/
-# SQLite, rebuilt from the workbook at startup
-*.db
-*.sqlite3
-
-# Node (in case anything outside frontend/ ever needs it)
-node_modules/
+mock-backoffice/data/
+*.pdf
 
 # OS / editor
 .DS_Store
+Thumbs.db
 .vscode/
 .idea/
+*.sw?
+.claude/launch.json
+
+# Personal / local
 .agents/
 AGENTS.md
-
 temp/
-
-*.pdf
-

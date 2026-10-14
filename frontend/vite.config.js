@@ -10,6 +10,8 @@ const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(file
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
+  // The project's single .env is at the repo root. Vite only exposes VITE_* variables to the client.
+  envDir: path.resolve(dirname, '..'),
   plugins: [react(), VitePWA({
     registerType: 'autoUpdate',
     includeAssets: ['favicon.svg', 'robots.txt'],

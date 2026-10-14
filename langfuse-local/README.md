@@ -1,163 +1,82 @@
-# Langfuse (self-hosted) — Setup Guide
+# Langfuse (self-hosted)
 
-This guide covers the local installation of Langfuse via Docker Compose,
-`.env` configuration, project creation, and wiring the API keys into the
-backend (`app/orchestrator/orchestrator.py`, where Langfuse's
-`CallbackHandler` is already attached to `graph.ainvoke(...)`).
+Local Langfuse instance used to trace the orchestrator and the agents. It is infrastructure, not application code: `langfuse-local/docker-compose.yml` is included by the root `docker-compose.yml`, so it starts with the rest of the stack.
 
-Langfuse lives in a **separate** folder from the backend repo (it's
-infrastructure, not application code — same category as Ollama).
-
-```
-langfuse-local/          ← this folder, NOT inside the backend/agents repo
-├── docker-compose.yml
-└── .env
-```
+All its variables are in the project's single `.env` at the repo root, in the *Langfuse self-hosted instance* section of [`.env.example`](../.env.example).
 
 ## Prerequisites
 
-- Docker and Docker Compose installed and working
-  (`docker --version` and `docker compose version` should both respond)
-- Port `3000` free on the machine (Langfuse UI/API)
+- Docker and Docker Compose
+- Port `3000` free (UI and API)
 
-## 1. docker-compose.yml
+## 1. Fill in the `.env`
 
-This file defines 6 services (`langfuse-web`, `langfuse-worker`,
-`postgres`, `clickhouse`, `redis`, `minio`) — see the "Architecture"
-section below for what each one does.
-
-## 2. Generate the required secrets
-
-Before creating the `.env`, generate the three cryptographic secrets
-Langfuse uses for internal authentication/encryption:
+From the repo root, if you haven't done it yet:
 
 ```bash
-openssl rand -base64 32   # → for NEXTAUTH_SECRET
-openssl rand -base64 16   # → for SALT
-openssl rand -hex 32      # → for ENCRYPTION_KEY
+cp .env.example .env
 ```
 
-Run each command and copy the output — you'll need them in the next step.
+Generate the three secrets and paste them into `NEXTAUTH_SECRET`, `SALT` and `ENCRYPTION_KEY`:
 
-## 3. Create the `.env`
-
-In the same folder (`langfuse-local/`), create a `.env` file with this
-structure. **Every value marked `<...>` must be generated/replaced by
-you** — the ones below are placeholders, don't use them as-is:
-
-```dotenv
-# ---------- Langfuse core ----------
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=<output of: openssl rand -base64 32>
-SALT=<output of: openssl rand -base64 16>
-ENCRYPTION_KEY=<output of: openssl rand -hex 32>
-
-# ---------- Postgres ----------
-POSTGRES_USER=langfuse
-POSTGRES_PASSWORD=<pick a strong password>
-POSTGRES_DB=langfuse
-DATABASE_URL=postgresql://langfuse:<same password as above>@postgres:5432/langfuse
-
-# ---------- ClickHouse ----------
-CLICKHOUSE_PASSWORD=<pick a strong password>
-
-# ---------- MinIO ----------
-MINIO_ROOT_USER=langfuse
-MINIO_ROOT_PASSWORD=<pick a strong password>
-
-LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=langfuse
-LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=<same password as MINIO_ROOT_PASSWORD>
-LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID=langfuse
-LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY=<same password as MINIO_ROOT_PASSWORD>
+```bash
+openssl rand -base64 32   # NEXTAUTH_SECRET
+openssl rand -base64 16   # SALT
+openssl rand -hex 32      # ENCRYPTION_KEY
 ```
 
-Practical notes on this file:
-- `DATABASE_URL` must use **the same password** set in
-  `POSTGRES_PASSWORD` right above — they're the same database, two
-  different variables that must be kept in sync manually.
-- The two pairs `LANGFUSE_S3_*_ACCESS_KEY_ID` / `..._SECRET_ACCESS_KEY`
-  must match `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` — these are the
-  credentials Langfuse (web + worker) uses to authenticate against
-  MinIO, which internally treats them as if it were a real S3 account.
-- Use different passwords across Postgres/ClickHouse/MinIO — don't
-  reuse the same password for every service.
+Then replace the other `<...>` values of the section. Keep these in sync:
 
-**This `.env` contains real secrets once filled in — never commit it to
-a Git repository.**
+- `DATABASE_URL` must contain the same password as `POSTGRES_PASSWORD`.
+- The `LANGFUSE_S3_*_SECRET_ACCESS_KEY` values must be equal to `MINIO_ROOT_PASSWORD` (and the `*_ACCESS_KEY_ID` values to `MINIO_ROOT_USER`).
 
-## 4. Start the containers
+## 2. Start it
+
+With the whole stack, from the repo root:
 
 ```bash
 docker compose up -d
 ```
 
-Follow the logs to see when it's ready:
+Only Langfuse:
 
 ```bash
-docker compose logs -f langfuse-web
+docker compose -f langfuse-local/docker-compose.yml --env-file .env up -d
 ```
 
-## 5. Create an account and a project
+The first time, start Langfuse alone: you need it running to create the API keys used by backend and agents.
 
-1. Open `http://localhost:3000` in the browser
-2. Create an account (everything is local, no data leaves your machine)
-3. Create an organization, then a project inside it (e.g.
-   `AROL Customer Platform`)
-4. In the project settings (**Settings → API Keys**), generate a key
-   pair: you'll get a `Public Key` (`pk-lf-...`) and a `Secret Key`
-   (`sk-lf-...`)
+## 3. Create the API keys
 
-## 6. Wire the keys into the backend and agents
+1. Open `http://localhost:3000` and sign up (the account is local).
+2. Create an organization and a project inside it.
+3. In the project, go to **Settings → API Keys** and create a key pair.
+4. Copy the `pk-lf-...` and `sk-lf-...` keys into `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in the root `.env`.
+5. Start (or recreate) backend and agents so they read the new keys:
 
-For local processes, use the same project keys in **backend/.env** and
-**agents/.env**. For Docker Compose, put them in the repository root `.env`;
-Compose passes them to both services:
-
-```dotenv
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=http://localhost:3000
-LANGFUSE_TRACING_ENABLED=true
+```bash
+docker compose up -d --force-recreate backend agents
 ```
 
-`app/config.py` reads these three variables and explicitly exports them
-into `os.environ` (necessary because Langfuse's `CallbackHandler()`
-reads them from there, not from pydantic's `settings` object — see the
-comments in `config.py` for the exact reason).
-The agents initialize their SDK directly from settings. The backend forwards
-the current tool's trace context in HTTP headers, so agent operations appear
-under the calling tool in the same trace. See `agents/README.md` for the full
-list of observations and the integration test command.
+## 4. Check that traces arrive
 
+Log in to the app, open a machine and ask a question. A new trace should appear in Langfuse within a few seconds (ingestion is asynchronous). Each chat turn is one trace, containing the orchestrator and the agent calls; see `agents/README.md` for the detail of what is traced.
 
-## 7. End-to-end verification
+If nothing shows up:
 
-Restart both services (rebuild the agents image after installing Langfuse),
-sign in to the application, select a machine and ask a question about its
-manual, commercial records, or alarms. The chat API requires an authenticated
-session and a machine belonging to that user's company.
+- the `LANGFUSE_*` keys in `.env` are not the project's keys;
+- backend and agents were not recreated after changing `.env` (`restart` is not enough);
+- `docker compose ps` does not show all Langfuse services as `healthy`.
 
-Open `http://localhost:3000` again → a new trace should appear (with a
-few seconds of delay, since ingestion is asynchronous). If nothing
-shows up, check these first:
-- Are the three `LANGFUSE_*` variables actually in the backend's `.env`?
-- Do the agents use the same host and project credentials?
-- Were both services restarted after adding them?
-- Does `docker compose ps` (inside `langfuse-local/`) show all 6
-  services as `healthy`?
-
-## Architecture — what each of the 6 containers does
+## Services
 
 | Service | Role |
 |---|---|
-| `langfuse-web` | UI + public API — the endpoint the backend sends traces to |
-| `langfuse-worker` | Consumes the queue and durably writes traces to ClickHouse |
-| `postgres` | "Management" data: users, projects, API keys |
-| `clickhouse` | Analytical data: the actual traces, optimized for aggregate queries |
-| `redis` | Work queue between web and worker, plus caching |
-| `minio` | S3-compatible storage for large attachments/exports |
+| `langfuse-web` | UI and API, receives the traces |
+| `langfuse-worker` | Reads the queue and writes the traces to ClickHouse |
+| `postgres` | Users, projects, API keys |
+| `clickhouse` | The traces |
+| `redis` | Queue between web and worker, cache |
+| `minio` | S3-compatible storage for events and attachments |
 
-The path of a trace: the backend's `CallbackHandler` → `langfuse-web`
-(validates) → `redis` (queue) → `langfuse-worker` (picks it up) →
-`clickhouse` (durable write). This decoupling is why sending traces
-doesn't slow down your `/v1/chat` responses.
+A trace goes `langfuse-web` → `redis` → `langfuse-worker` → `clickhouse`. Since the write is asynchronous, tracing does not slow down the chat responses.

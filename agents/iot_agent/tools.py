@@ -32,7 +32,8 @@ SEARCH_TELEMETRY_TOOL = {
             "Search individual hourly IoT snapshots and aggregates for the same filter. "
             "Use it for a specific time/status or when individual readings are needed; use "
             "analyze_machine_health for a broad overview. Explicit ISO dates override the "
-            "rolling window. Results are newest first."
+            "rolling window; pass them only for a calendar date the user named, never for "
+            "relative periods. Results are newest first."
         ),
         "parameters": {
             "type": "object",
@@ -58,7 +59,10 @@ SEARCH_ALARMS_TOOL = {
         "description": (
             "Search alarm events for this machine. It returns matching totals, breakdowns "
             "and bounded event rows. Use it for active alarms, severity, alarm history or a "
-            "specific ALnnn code. Explicit ISO dates override the rolling window."
+            "specific ALnnn code. The rolling window ends at the newest snapshot. Explicit "
+            "ISO dates override it; pass them only for a calendar date the user named. "
+            "For open/active alarms without a named period use status=Open and "
+            "window_hours=720."
         ),
         "parameters": {
             "type": "object",

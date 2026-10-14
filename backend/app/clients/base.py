@@ -27,8 +27,6 @@ class HttpAgentClient(Generic[T]):
     response_schema: ClassVar[type[BaseModel]]
     agent_name: ClassVar[str]
 
-    timeout_seconds: ClassVar[float] = 60.0
-
     def __init__(self, base_url: str | None = None):
         # Injectable for tests; defaults to the configured agents service.
         self.base_url = (base_url or settings.AGENTS_SERVICE_URL).rstrip("/")
@@ -49,7 +47,10 @@ class HttpAgentClient(Generic[T]):
             name=f"{self.agent_name}.http", as_type="span",
             input=payload, metadata={"method": "POST", "url": url},
         ) as observation:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            # A read timeout may leave inference running downstream, so only the
+            # connect phase is short (and retried); the read waits for the agent.
+            timeout = httpx.Timeout(settings.AGENTS_REQUEST_TIMEOUT_SECONDS, connect=5.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(url, json=payload, headers=agent_trace_headers())
             observation.update(metadata={"http_status": response.status_code})
             response.raise_for_status()

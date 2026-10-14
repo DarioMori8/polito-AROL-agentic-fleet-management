@@ -6,7 +6,9 @@ services:
   #  mock-backoffice — stands in for the real ERP/CRM (quotes, orders, docs)
 
   mock-backoffice:
-    build: ./mock-backoffice
+    build:
+      context: .
+      dockerfile: mock-backoffice/Dockerfile
     ports:
       - "8003:8003"
     volumes:
@@ -22,9 +24,8 @@ services:
   #  agents
   agents:
     build:
-      context: ./agents
-      additional_contexts:
-        contracts: ./shared/contracts
+      context: .
+      dockerfile: agents/Dockerfile
     ports:
       - "8001:8001"
     environment:
@@ -60,9 +61,8 @@ services:
   #  backend 
   backend:
     build:
-      context: ./backend
-      additional_contexts:
-        contracts: ./shared/contracts
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -98,7 +98,9 @@ services:
 
   #  frontend 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
       - "8080:3000"
     depends_on:

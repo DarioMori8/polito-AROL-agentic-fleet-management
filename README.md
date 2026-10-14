@@ -1,338 +1,201 @@
 # Polito x AROL - Agentic Fleet Management
 
-Piattaforma conversazionale che assiste gli operatori di stabilimento tramite un
-insieme di agenti specializzati: documentazione tecnica delle macchine, dati
-commerciali, telemetria, allarmi e manutenzione.
+Conversational platform for AROL plant operators: an LLM orchestrator routes each question to specialized agents for technical manuals, commercial data, telemetry, alarms and maintenance.
 
-## Servizi
+## Repository structure
 
-| Servizio | Porta | Cosa fa |
-|---|---|---|
-| `frontend` | 8080 | UI operatore (scansione QR, chat, viewer manuali) |
-| `backend` | 8000 | API, orchestratore LangGraph, anagrafica macchine |
-| `agents` | 8001 | Manuals Agent, Docs Agent e IoT Agent |
-| `mock-backoffice` | 8003 | Sta al posto dell'ERP/CRM: preventivi, ordini, documenti |
-| `langfuse-web` | 3000 | Tracing delle esecuzioni dell'orchestratore |
+| Folder | Content | Port | Docs |
+|---|---|---|---|
+| `frontend/` | React PWA: login, QR scanning, chat, manual viewer | 8080 | [frontend/README.md](frontend/README.md) |
+| `backend/` | FastAPI API, authentication, LangGraph orchestrator, machine registry | 8000 | [backend/README.md](backend/README.md) |
+| `agents/` | Manuals Agent (RAG on Chroma), Docs Agent, IoT Agent | 8001 | [agents/README.md](agents/README.md) |
+| `mock-backoffice/` | Stands in for the ERP/CRM: serves the Q2 dataset (orders, quotes, telemetry, alarms) | 8003 | [mock-backoffice/README.md](mock-backoffice/README.md) |
+| `langfuse-local/` | Self-hosted Langfuse instance for tracing | 3000 | [langfuse-local/README.md](langfuse-local/README.md) |
+| `shared/contracts/` | Pydantic schemas shared by backend and agents | — | — |
+| `data/manuals/` | Manual PDFs (not versioned) | — | — |
 
-Langfuse arriva da `langfuse-local/docker-compose.yml`, incluso dal compose
-principale: tira su anche postgres, clickhouse, redis e minio, quindi il primo
-avvio è lento.
+Everything starts from a single `docker-compose.yml` at the root, which also includes the Langfuse one. The only component outside Docker is **Ollama**, which runs directly on the host machine.
 
----
+The configuration files are also one per repository, all at the root: `.env` (from `.env.example`), `.gitignore` and `.dockerignore`. Every image is built with the repo root as context and its own `<service>/Dockerfile`, so the single `.dockerignore` applies to all of them.
 
-# Avvio con Docker Compose
+## Machine setup
 
-Questi sono gli step minimi per far partire tutto. I dettagli specifici di ogni
-servizio stanno nelle sezioni più sotto.
+### 1. Requirements
 
-## 1. Prerequisiti
+- Docker and Docker Compose (`docker compose version` must respond)
+- Ollama ([ollama.com/download](https://ollama.com/download))
+- A GPU with at least 12 GB of VRAM is recommended. It also works without a GPU, but much more slowly.
 
-- Docker e Docker Compose (`docker compose version` deve rispondere)
-- **Ollama acceso sull'host**, con i modelli `gpt-oss:20b` e `nomic-embed-text`
-  già scaricati
+### 2. Ollama
 
-Ollama **non** è un servizio del compose: i container lo raggiungono sull'host
-tramite `host.docker.internal:11434`, quindi deve essere già in esecuzione prima
-di avviare lo stack.
+Download the two models, one for chat and one for embeddings:
 
-> Se non l'hai mai installato, o se ti mancano i modelli, fai prima gli step
-> **1, 2 e 3** di [`agents/README.md`](agents/README.md) — installazione,
-> download dei due modelli e verifica — e poi torna qui. Non sono ripetuti in
-> questa pagina per non tenere due copie delle stesse istruzioni.
+```bash
+ollama pull gpt-oss:20b
+```
 
-### Avviare Ollama
+```bash
+ollama pull nomic-embed-text
+```
 
-- **macOS**: parte da solo aprendo l'app. Se l'hai installato con Homebrew:
-  `brew services start ollama`
-- **Linux**: l'installer registra un servizio systemd, quindi
-  `sudo systemctl start ollama`. In alternativa `ollama serve` in un terminale
-  dedicato, da lasciare aperto
-- **Windows**: parte automaticamente come servizio in background dopo
-  l'installazione (icona nella system tray)
+**Linux only:** by default Ollama listens only on `127.0.0.1`, so the containers cannot reach it. Make it listen on all interfaces:
 
-Verifica che risponda e che entrambi i modelli siano elencati:
+```bash
+sudo systemctl edit ollama
+```
+
+In the editor, add these lines and save:
+
+```ini
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+```
+
+Then restart the service:
+
+```bash
+sudo systemctl restart ollama
+```
+
+This is not needed on macOS and Windows: Docker Desktop already reaches the host.
+
+Check that Ollama responds and lists both models:
 
 ```bash
 curl http://localhost:11434/api/tags
 ```
 
-## 2. File di ambiente
+### 3. `.env` file
 
-Prima di avviare servono due file, nessuno dei due versionato:
-
-- **`.env` nella radice del repository**, con le chiavi Langfuse. Il compose si
-  ferma subito senza, perché le referenzia come obbligatorie:
-
-  ```dotenv
-  LANGFUSE_PUBLIC_KEY=pk-lf-...
-  LANGFUSE_SECRET_KEY=sk-lf-...
-  ```
-
-- **`langfuse-local/.env`**, con i segreti dell'istanza Langfuse. La procedura
-  per generarli è in [`langfuse-local/README`](langfuse-local/README).
-
-Gli altri servizi hanno i propri `.env`: vedi le rispettive sezioni.
-
-## 3. Avviare
+The project uses a single `.env` at the root. Create it from the template:
 
 ```bash
-docker compose up --build
+cp .env.example .env
 ```
 
-L'ordine è gestito dagli healthcheck: `mock-backoffice` per primo, poi `agents`,
-poi `backend`, infine `frontend`.
-
-## 4. Verificare
-
-Il `mock-backoffice` costruisce il proprio database dal workbook Excel al primo
-avvio, da solo: non serve lanciare nulla. I dettagli sono nella sezione
-[Mock-backoffice](#mock-backoffice).
+Then replace the `<...>` values of the Langfuse instance. Generate the three secrets with:
 
 ```bash
-docker compose ps
+openssl rand -base64 32   # NEXTAUTH_SECRET
+openssl rand -base64 16   # SALT
+openssl rand -hex 32      # ENCRYPTION_KEY
 ```
 
-Tutti i servizi devono risultare `healthy` o `running`. In caso di dubbi:
+The other rules on these values are in [langfuse-local/README.md](langfuse-local/README.md). Leave `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` as they are for now: you get them from Langfuse in step 5.
 
-```bash
-curl http://localhost:8003/health
-curl http://localhost:8001/health
-curl http://localhost:8000/health
-```
+### 4. Manuals
 
-Ognuno deve rispondere `{"status":"ok"}`. Il frontend è su
-[localhost:8080](http://localhost:8080), Langfuse su
-[localhost:3000](http://localhost:3000).
-
-> Attenzione: i container possono risultare `healthy` anche se Ollama non è
-> raggiungibile — l'healthcheck non lo verifica. In quel caso partono tutti
-> correttamente ma ogni domanda in chat fallisce a runtime.
-
----
-
-# Agents
-
-Il container `agents` parte da solo, ma il Manuals Agent non risponde finché non
-gli metti i manuali e non fai l'ingestion. Sono due step manuali, una tantum.
-
-## 1. Mettere i manuali in `data/manuals/`
-
-I manuali **non sono nel repository**: sono proprietà di AROL, forniti per il
-solo uso didattico. Vanno scaricati dal pacchetto dataset del corso (la cartella
-`manuals/`, insieme a `AROL_Q2_synthetic_fleet_dataset.xlsx`) e copiati in
-`data/manuals/` alla radice del repository:
+The manuals are AROL property and are not in the repository. Download them from the course dataset package and copy them into `data/manuals/`:
 
 ```
 data/manuals/
 ├── 15610_manual_EN.pdf
 ├── 17203_manual_EN.pdf
-├── 17478_manual_EN.pdf
-├── 17579_manual_EN.pdf
-├── A2055_manual_EN.pdf
-├── A2064_manual_EN.pdf
-├── A2132_manual_EN.pdf
+├── ...
 └── A4344_manual_EN.pdf
 ```
 
-Il compose monta questa cartella in sola lettura su `/data/manuals` dentro il
-container, quindi basta copiarceli dentro: non serve ricostruire l'immagine.
+Keep the file names as `<serialNumber>_manual_<LANG>.pdf`: the serial is what links a manual to its machine.
 
-Il nome del file conta: contiene il **serial number** della macchina. L'ingestion
-lo traduce nel `machineId` corrispondente (`17478_manual_EN.pdf` → `17478` →
-`MCH-0004`) chiedendolo al registro della flotta del `mock-backoffice`, e usa
-quello nei metadati di ogni chunk. È la chiave con cui l'agente, a runtime, cerca
-solo dentro il manuale della macchina giusta — e il motivo per cui tutto il
-sistema, dal QR fino a Chroma, usa un identificativo solo. I file che non seguono
-lo schema `<serialNumber>_manual_<LANG>.pdf` vengono saltati con un messaggio.
+### 5. Langfuse API keys
 
-> `data/` è in `.gitignore`, quindi i PDF non finiscono mai in un commit.
+Start Langfuse alone (the first time it pulls postgres, clickhouse, redis and minio, so it is slow):
 
-## 2. Fare l'ingestion
+```bash
+docker compose -f langfuse-local/docker-compose.yml --env-file .env up -d
+```
 
-L'agente non legge i PDF al volo: cerca in un database vettoriale (Chroma). Va
-quindi popolato una volta sola, a container acceso:
+Then open [localhost:3000](http://localhost:3000):
+
+1. sign up (the account is local);
+2. create an organization and a project inside it;
+3. in the project, go to **Settings → API Keys** and create a key pair;
+4. copy the `pk-lf-...` and `sk-lf-...` keys into `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `.env`.
+
+### 6. Start
+
+```bash
+docker compose up -d --build
+```
+
+The healthchecks start the services in order: mock-backoffice, agents, backend, frontend.
+
+### 7. Index the manuals (first time only)
+
+The Manuals Agent searches a Chroma index, which must be built once with the stack running:
 
 ```bash
 docker compose exec agents python -m manuals_agent.ingestion
 ```
 
-Output atteso la prima volta:
-
-```
-Ingested 15610_manual_EN.pdf -> MCH-0001: 277 chunk
-Ingested 17203_manual_EN.pdf -> MCH-0002: 263 chunk
-...
-```
-
-Il `mock-backoffice` deve essere in piedi — con Compose lo è già, `agents` non
-parte prima che sia `healthy` — perché è lui a dire quale `machineId` corrisponde
-a ciascun serial.
-
-**Mettici in conto parecchi minuti**: sono 2155 chunk in totale e ognuno richiede
-una chiamata di embedding a Ollama. Lascialo finire.
-
-L'indice finisce in `agents/data/chroma/`, che è dentro il bind mount del
-codice, quindi **sopravvive** a `docker compose down` e ai rebuild. L'ingestion
-si fa una volta sola.
-
-Lo script è idempotente per singolo manuale: rilanciandolo, quelli già
-indicizzati vengono saltati e viene ingerito solo ciò che manca.
-
-```
-Already ingested 15610_manual_EN.pdf
-```
-
-Quindi se aggiungi un nono PDF ti basta rilanciare il comando. Per forzare un
-re-ingestion completo, cancella `agents/data/chroma/` e rilancia — serve per
-esempio se cambi il modello di embedding, perché vettori calcolati con modelli
-diversi non sono confrontabili.
-
-## 3. Verificare che risponda
+It takes several minutes. The index is saved in `agents/data/chroma/` and survives `docker compose down`. When it finishes, restart the agents so they see the new index:
 
 ```bash
-curl -X POST http://localhost:8001/agents/manuals/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What safety precautions should be taken before maintenance?", "machine_id": "MCH-0004"}'
+docker compose restart agents
 ```
 
-`machine_id` è quello del dataset, da `MCH-0001` a `MCH-0008`. Se la risposta
-contiene `citations` con `doc` e `page` reali, il RAG funziona.
-
-Se `citations` è vuoto e `confidence` è `0.0`: o l'ingestion non è stata fatta,
-o il `machine_id` non corrisponde a nessun manuale indicizzato.
-
-## Per lo sviluppo in locale
-
-Per lavorare sugli agenti fuori da Docker (venv, uvicorn, test dei tre agenti
-uno per uno) la guida completa è in [`agents/README.md`](agents/README.md).
-
----
-
-# Backend
-
-_TODO_
-
-# Frontend
-
-Mobile-first **Progressive Web Application (PWA)** costruita con React 19 + Vite 8, ottimizzata per tecnici di stabilimento su dispositivi rugged. La UI segue il design system **AROL Rugged UI** (touch target ≥ 48 px, alto contrasto, design token in `tokens.css`).
-
-La documentazione completa del frontend — architettura, design system, flusso SSE e struttura del progetto — è in [`frontend/README.md`](frontend/README.md).
-
-## Tech stack principale
-
-| Layer | Libreria |
-| :--- | :--- |
-| Framework | React 19 + Vite 8 |
-| Routing | React Router v8 |
-| PWA | `vite-plugin-pwa` (manifest + service worker) |
-| PDF Viewer | `react-pdf` v10 |
-| Markdown | `react-markdown` + `remark-gfm` |
-| QR Scanner | `html5-qrcode` |
-| Produzione | Nginx Alpine (multi-stage Dockerfile) |
-
-## Features principali
-
-- **Chat AI in streaming** — SSE token-by-token via `POST /v1/chat/stream`; parsing di eventi `start`, `thinking`, `token`, `citations`, `done`, `error`
-- **AI Thinking accordion** — il ragionamento interno del modello (`thinking` events) è mostrato in un pannello collassabile `💭 Mostra ragionamento` nelle bolle AI
-- **Viewer PDF integrato** — navigazione pagine, zoom, fullscreen, citation routing (click sulla citazione → pagina esatta del manuale)
-- **Ricerca full-text nel PDF** — testo estratto client-side con `react-pdf` e ricercato in real-time con navigazione ai match
-- **Chat History** — sessioni per macchina salvate in `localStorage`; restore automatico dell'ultima sessione dal backend (`GET /v1/conversations/{session_id}/messages`); `ChatHistoryDrawer` per navigare le conversazioni passate
-- **Rendering Markdown GFM** — risposte AI con tabelle, bold, code block, liste via `react-markdown` + `remark-gfm`
-- **QR Scanner** — scansione QR code delle macchine via fotocamera (`html5-qrcode`)
-- **Offline/mock mode** — `VITE_USE_MOCK=true` attiva la simulazione SSE locale senza backend
-
-## Routes
-
-| Percorso | Componente | Descrizione |
-| :--- | :--- | :--- |
-| `/` o `/fleet` | `FleetView` | Dashboard flotta con griglia macchine e filtri |
-| `/machine/:id` | `LandingQR` | Scheda macchina post-scansione QR |
-| `/workspace/:id` | `WorkspaceWrapper` | Chat AI + viewer manuali |
-| `/scanner` | `MachineScanner` | Scanner QR via fotocamera |
-
-## Come avviare
+### 8. Check
 
 ```bash
-cd frontend
-cp .env.example .env       # configura VITE_API_URL (default: http://localhost:8000)
-npm install
-npm run dev                # → http://localhost:3000
+docker compose ps
 ```
 
-In Docker (stack completo) il frontend è raggiungibile su `http://localhost:8080`.
+All services must be `healthy` or `running`. Then:
 
-# Mock-backoffice
+- **App:** [localhost:8080](http://localhost:8080). For example, log in as `elena.fabbri@valgrande.example` with password `Arol2026!`, the same for every dev user.
+- **Langfuse:** [localhost:3000](http://localhost:3000), with the account created in step 5.
+- **Backend API:** [localhost:8000/docs](http://localhost:8000/docs).
 
-Sta al posto dell'ERP/CRM reale di AROL e serve i dati del dataset Q2: aziende,
-macchine, preventivi con lo storico revisioni, ordini, telemetria e allarmi.
+The healthchecks do not check Ollama: if the containers are `healthy` but every chat question fails, go back to step 2.
 
-## Non c'è niente da fare
+## Tests
 
-Il database **si costruisce da solo** al primo avvio del container. Il servizio
-legge `mock-backoffice/dataset/AROL_Q2_synthetic_fleet_dataset.xlsx` e scrive
-`mock-backoffice/data/backoffice.db` prima di iniziare a servire richieste.
-
-Nel repository c'è il **workbook**, non il database: il `.db` è dato derivato e
-si rigenera in meno di un secondo, quindi versionarlo sarebbe solo un binario in
-più da tenere allineato. Nei log del container, al primo avvio:
-
-```
-Companies                   5 righe, 7 colonne
-...
-TelemetrySnapshots       5760 righe, 10 colonne
-
-Scritto data/backoffice.db (988 KB)
-```
-
-Viene ricostruito **solo** se manca o se il workbook è più recente, quindi i
-riavvii successivi non ripetono il lavoro.
-
-## Se il dataset viene aggiornato
-
-Sostituisci il file in `mock-backoffice/dataset/` e riavvia il servizio: il
-timestamp più recente basta a farlo ricaricare da zero.
+All Python tests use `unittest`. Each service's tests run inside its container:
 
 ```bash
-docker compose restart mock-backoffice
+docker compose exec backend python -m unittest discover -s tests
 ```
-
-Per forzare la ricostruzione senza toccare il workbook, cancella il database:
 
 ```bash
-rm mock-backoffice/data/backoffice.db && docker compose restart mock-backoffice
+docker compose exec agents python -m unittest discover -s tests
 ```
-
-## Verificare
 
 ```bash
-curl http://localhost:8003/health
-curl http://localhost:8003/machines
+docker compose exec mock-backoffice python -m unittest discover -s tests
 ```
 
-Il primo deve rispondere `{"status":"ok"}`, il secondo elencare le 8 macchine
-della flotta con serial number, modello e azienda proprietaria.
+The frontend tests are Storybook stories run by Vitest in a real Chromium browser. The frontend image only contains Nginx, so they run in the official Playwright image (same version as in `package-lock.json`). The code is mounted read-only and copied inside the container, so nothing is written to your folder:
 
-Se ottieni **`503 Dataset not loaded`**, il workbook non è dove il servizio se lo
-aspetta: il servizio parte comunque — così un dataset mancante non blocca tutto
-lo stack — ma non ha dati da servire.
+```bash
+docker run --rm -v "$PWD/frontend":/src:ro mcr.microsoft.com/playwright:v1.61.1-noble sh -c "mkdir /app && cd /src && tar --exclude=node_modules -cf - . | tar -C /app -xf - && cd /app && npm ci && npm test"
+```
 
-## Endpoint disponibili
+`tests/` at the root contains the integration test of the tracing between backend and agents (real Langfuse SDK, LangGraph and ASGI endpoints; only Ollama and the backoffice are simulated). It needs the dependencies of both services in one environment:
 
-| Endpoint | Cosa restituisce |
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
+```
+
+```bash
+(cd backend && pip install -r requirements.txt) && (cd agents && pip install -r requirements.txt)
+```
+
+```bash
+PYTHONPATH=backend:agents python -m unittest discover -s tests
+```
+
+## Dependencies
+
+Each Python service lists in `requirements.txt` only the libraries it uses directly, pinned to an exact version (`==`). Libraries used by more than one service (FastAPI, Pydantic, httpx, Langfuse, …) have the same version everywhere. After changing a `requirements.txt`, rebuild the image (`docker compose up -d --build <service>`).
+
+## Useful commands
+
+| What | Command |
 |---|---|
-| `GET /machines` | la flotta, con serial, modello e azienda |
-| `GET /machines/{machine_id}` | dettaglio macchina, configurazione as-built e specifiche del modello |
-| `GET /machines/{machine_id}/health` | sintesi operativa su una finestra temporale: uptime, produzione, temperatura, allarmi ricorrenti |
-| `GET /machines/{machine_id}/telemetry` | ricerca limitata degli snapshot IoT con filtri temporali e di stato |
-| `GET /machines/{machine_id}/alarms` | ricerca degli eventi di allarme per data, severità, stato o codice |
-| `GET /machines/{machine_id}/maintenance-tickets` | ricerca dei ticket per data, stato, priorità o allarme collegato |
-| `GET /companies/{company_id}/orders` | ordini del cliente, con le righe e il totale della revisione approvata |
-| `GET /companies/{company_id}/quotes` | preventivi del cliente, con lo storico revisioni, stato e importo correnti |
+| Logs of a service | `docker compose logs -f backend` |
+| Restart after a code change | `docker compose restart backend` |
+| Rebuild after a dependency or Dockerfile change | `docker compose up -d --build backend` |
+| Apply a `.env` change | `docker compose up -d --force-recreate` |
+| Stop everything | `docker compose down` |
 
-I due endpoint commerciali accettano `?machine_id=` per restringere a una singola
-macchina, più i filtri `status`, `order_id` e `quote_id`.
-
-Sono scopati per **azienda** e non per macchina perché è così che sono fatti i
-dati: un ordine porta un `companyId`, e arriva a una macchina solo attraverso le
-righe di una revisione di preventivo — quando ci arriva, perché un preventivo per
-una macchina non ancora installata non punta a nessuna macchina.
+To work on a single service outside Docker, follow the README in its folder.

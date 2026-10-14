@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # bind mount).
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = BACKEND_ROOT / "data"
+# The single .env of the project lives at the repo root. In the container
+# this path does not exist and the variables come from docker-compose.
+ENV_FILE = BACKEND_ROOT.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -23,7 +27,7 @@ class Settings(BaseSettings):
     Single typed source of configuration for the backend.
 
     Resolution order for every field: process environment (docker-compose
-    `environment:`) > backend/.env > the default below. Fields without a
+    `environment:`) > the root .env > the default below. Fields without a
     default are mandatory: if they are missing, instantiating Settings raises
     at import time and the app refuses to start (fail fast).
 
@@ -32,15 +36,17 @@ class Settings(BaseSettings):
     `localhost` is the container itself.
     """
 
-    # Anchored to BACKEND_ROOT rather than the CWD, like every other path here.
+    # Anchored to the file location rather than the CWD, like every other path here.
     model_config = SettingsConfigDict(
-        env_file=BACKEND_ROOT / ".env",
+        env_file=ENV_FILE,
         extra="ignore",
     )
 
     # --- Downstream agents service
     # Docker: http://agents:8001 (service name on the compose network).
     AGENTS_SERVICE_URL: str = "http://localhost:8001"
+    # An agent may need several local LLM calls before it answers.
+    AGENTS_REQUEST_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
 
     # --- Orchestrator LLM
     # Only Ollama is implemented. Declared as a Literal so that a different
@@ -92,7 +98,7 @@ settings = Settings()
 
 # Explicit bridge to os.environ. Langfuse's CallbackHandler() reads its
 # credentials straight from the process environment, not from this Settings
-# object, and pydantic-settings reads backend/.env into the model WITHOUT
+# object, and pydantic-settings reads the root .env into the model WITHOUT
 # exporting it to os.environ. Without this block, settings.LANGFUSE_PUBLIC_KEY
 # would hold the right value while CallbackHandler() still saw nothing.
 #
