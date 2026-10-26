@@ -9,6 +9,9 @@ Il pacchetto di consegna usa `compose.delivery.yml`: include Ollama, scarica
 Llama 3.1 8B e il modello di embedding, indicizza i manuali e inizializza Langfuse.
 È sufficiente installare e aprire Docker, estrarre il pacchetto e avviare
 `avvia.bat` su Windows oppure `sh avvia.sh` su macOS/Linux. Non serve creare `.env`.
+Su Windows/Linux con GPU NVIDIA configurata per Docker, usare invece
+`avvia-gpu.bat` oppure `sh avvia-gpu.sh`: il setup controlla anche l'uso effettivo della GPU.
+Prerequisiti e diagnosi sono nella [sezione NVIDIA della guida](CONSEGNA.md#gpu-nvidia-opzionale).
 
 Le sezioni seguenti descrivono invece l'ambiente di **sviluppo** preesistente,
 con Ollama sull'host e il file `docker-compose.yml`.

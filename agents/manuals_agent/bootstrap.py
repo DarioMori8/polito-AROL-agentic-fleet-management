@@ -31,6 +31,30 @@ def ensure_model(client, model: str, *, require_tools: bool = False) -> None:
         raise ValueError(f"Model {model} does not support tool calling. Use llama3.1:8b.")
 
 
+def verify_gpu(client, model: str) -> None:
+    """Check the actual loaded model, not just whether a GPU is visible."""
+    for loaded in client.ps().get("models", []):
+        name = loaded.get("model") or loaded.get("name") or ""
+        if name.removesuffix(":latest") != model.removesuffix(":latest"):
+            continue
+        vram = loaded.get("size_vram") or 0
+        size = loaded.get("size") or 0
+        if vram > 0:
+            print(f"GPU check passed: {name} uses {vram / 1024**3:.2f} GiB of VRAM", flush=True)
+            if size > vram:
+                print(
+                    "NOTICE: the model is only partially on GPU; CPU offload can slow replies. "
+                    "Free GPU memory or reduce DELIVERY_NUM_CTX (e.g. 4096) if necessary.",
+                    flush=True,
+                )
+            return
+    raise RuntimeError(
+        f"GPU mode requested, but Ollama reports no GPU memory for {model}. "
+        "Check NVIDIA drivers, Docker GPU access and free VRAM; see CONSEGNA.md. "
+        "Setup stopped instead of silently accepting CPU-only inference."
+    )
+
+
 def verify_inference(client) -> None:
     """Exercise the configured context size before announcing a usable app."""
     print("Checking that the chat model can run with the available memory...", flush=True)
@@ -39,19 +63,24 @@ def verify_inference(client) -> None:
             model=settings.OLLAMA_MODEL,
             messages=[{"role": "user", "content": "Reply OK."}],
             options={"num_ctx": settings.OLLAMA_NUM_CTX, "num_predict": 1},
-            keep_alive=0,
+            # /api/ps can inspect GPU residency only while the model is loaded.
+            keep_alive="5m" if settings.SETUP_REQUIRE_GPU else 0,
         )
     except ollama.ResponseError as exc:
         if any(word in str(exc).lower() for word in ("memory", "killed", "allocate")):
+            gpu_hint = "Check free GPU VRAM and NVIDIA drivers too. " if settings.SETUP_REQUIRE_GPU else ""
             raise RuntimeError(
                 "Ollama could not load the chat model with the available memory. "
                 "Assign at least 16 GB of RAM to Docker Desktop, apply/restart Docker, "
                 "then run the startup script again. Models and indexed manuals are preserved. "
+                f"{gpu_hint}"
                 f"Original error: {exc}"
             ) from exc
         raise
     if not response.get("done"):
         raise RuntimeError("Ollama did not complete the startup inference check")
+    if settings.SETUP_REQUIRE_GPU:
+        verify_gpu(client, response.get("model") or settings.OLLAMA_MODEL)
     print("Chat model inference check passed", flush=True)
 
 
@@ -61,8 +90,9 @@ def main() -> None:
     client = ollama.Client(host=settings.OLLAMA_BASE_URL, timeout=1800)
     ensure_model(client, settings.OLLAMA_MODEL, require_tools=True)
     ensure_model(client, settings.EMBEDDING_MODEL)
-    seed_manuals(manuals)
+    # Fail before spending time indexing manuals if the selected device cannot run Llama.
     verify_inference(client)
+    seed_manuals(manuals)
     print("Setup complete: models and manuals are ready.", flush=True)
 
 

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     OLLAMA_NUM_CTX: int = 16384
     OLLAMA_REQUEST_TIMEOUT_SECONDS: float = Field(default=100.0, gt=0)
     EMBEDDING_MODEL: str = "nomic-embed-text"
+    # The NVIDIA delivery override must not silently fall back to CPU.
+    SETUP_REQUIRE_GPU: bool = False
 
     # Other examples:
     # ANTHROPIC_API_KEY: str | None = None

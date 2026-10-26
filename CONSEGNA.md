@@ -8,6 +8,7 @@
 3. **Avviare il progetto**:
    - **Windows:** doppio clic su `avvia.bat` nella cartella estratta.
    - **macOS/Linux:** aprire il terminale nella cartella estratta ed eseguire `sh avvia.sh`.
+   - **Con GPU NVIDIA su Windows/Linux:** dopo i [prerequisiti GPU](#gpu-nvidia-opzionale), usare invece `avvia-gpu.bat` su Windows oppure `sh avvia-gpu.sh` su Linux.
 4. Attendere il messaggio **Pronto**, poi aprire **[http://localhost:8080](http://localhost:8080)**.
 
 Credenziali dell'applicazione:
@@ -41,11 +42,11 @@ Il pacchetto usa **Docker Compose** per avviare un insieme coordinato di contain
 1. Costruzione delle immagini di frontend, backend, agenti e mock backoffice.
 2. Avvio del mock backoffice e caricamento del dataset Excel incluso nel repository.
 3. Avvio di Ollama all'interno di Docker.
-4. Verifica della presenza dei manuali di tutte le otto macchine.
-5. Download di **`llama3.1:8b`**, usato dall'orchestratore e dagli agenti, e **`nomic-embed-text`**, usato per gli embedding. I modelli già presenti vengono riutilizzati.
-6. Estrazione del testo dei PDF, suddivisione in frammenti e costruzione dell'indice Chroma.
-7. Avvio di Langfuse e dei suoi servizi; creazione automatica di organizzazione, progetto, account e chiavi API.
-8. Prova reale di generazione di un token, con la stessa finestra di contesto della chat: verifica che il modello riesca a caricarsi in memoria. Il modello viene poi scaricato dalla RAM, mantenendo i pesi nel volume.
+4. Avvio di Langfuse e dei suoi servizi; creazione automatica di organizzazione, progetto, account e chiavi API.
+5. Verifica della presenza dei manuali di tutte le otto macchine.
+6. Download di **`llama3.1:8b`**, usato dall'orchestratore e dagli agenti, e **`nomic-embed-text`**, usato per gli embedding. I modelli già presenti vengono riutilizzati.
+7. Prova reale di generazione di un token, con la stessa finestra di contesto della chat, prima di iniziare l'ingestion. In modalità NVIDIA viene controllata anche la memoria GPU effettivamente usata dal modello: se è zero il setup si ferma. In modalità CPU il modello viene subito scaricato dalla RAM; in modalità GPU resta disponibile fino a cinque minuti di inattività o fino al caricamento del modello di embedding. I pesi restano nel volume.
+8. Estrazione del testo dei PDF, suddivisione in frammenti e costruzione dell'indice Chroma.
 9. Avvio di agenti, backend e interfaccia, in quest'ordine e solo dopo la riuscita dei passaggi necessari.
 
 Il modello scelto è la variante Llama 3.1 da 8 miliardi di parametri con supporto alle chiamate di strumenti; il download del modello è circa 4,9 GB. [Scheda ufficiale](https://ollama.com/library/llama3.1:8b).
@@ -86,6 +87,8 @@ docker compose -f compose.delivery.yml down
 ```
 
 **Riavviare:** eseguire di nuovo `avvia.bat` oppure `sh avvia.sh`. Gli script fermano prima i servizi che leggono Chroma, poi ripetono i controlli e attendono che l'app sia pronta. I PDF invariati e i modelli già scaricati vengono riutilizzati.
+
+Se si usa NVIDIA, riavviare sempre con **`avvia-gpu.bat`** oppure **`sh avvia-gpu.sh`**, anche dopo un aggiornamento dei sorgenti. Gli script normali selezionano la CPU; modelli, indice e dati sono gli stessi in entrambe le modalità. I comandi di avvio Compose a un solo file riportati qui sotto selezionano anch'essi la CPU; per mantenere NVIDIA aggiungere `-f compose.delivery.gpu.yml` subito dopo `-f compose.delivery.yml`.
 
 È possibile avviare direttamente con Compose, a stack fermo:
 
@@ -139,13 +142,63 @@ Questo elimina anche i modelli scaricati, le conversazioni e le tracce. Al succe
 
 ## GPU NVIDIA opzionale
 
-Su un computer con GPU NVIDIA e ambiente Docker già configurato per usarla, avviare da stack fermo con:
+**Llama 3.1 8B può usare una GPU NVIDIA attraverso Ollama.** Il pacchetto mantiene la stessa immagine Ollama e gli stessi modelli; `compose.delivery.gpu.yml` assegna le GPU al solo servizio Ollama. L'immagine fissata alla versione 0.13.5 include già le librerie CUDA: non occorre installare Python, PyTorch o il CUDA Toolkit dentro gli altri container. [Dockerfile ufficiale della versione inclusa](https://github.com/ollama/ollama/blob/v0.13.5/Dockerfile).
+
+### Preparazione del computer (una sola volta)
+
+- **Windows 10/11 con NVIDIA:** installare driver NVIDIA aggiornati, aggiornare WSL con `wsl --update` e abilitare **Use the WSL 2 based engine** in Docker Desktop. Usare i container Linux. Il backend Hyper-V non fornisce questo passaggio della GPU ai container. [Prerequisiti ufficiali Docker per Windows](https://docs.docker.com/desktop/features/gpu/).
+- **Linux con NVIDIA:** usare Docker Engine sul sistema con GPU, installare i driver e il **NVIDIA Container Toolkit** seguendo la [guida ufficiale NVIDIA](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Configurare il runtime e riavviare Docker con i comandi seguenti. La guida NVIDIA riporta anche la configurazione specifica per Docker rootless.
+
+```sh
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+Il riavvio di Docker interessa anche gli altri container eventualmente attivi sul computer. Driver e runtime sono prerequisiti del sistema ospitante e vanno configurati una volta da chi amministra il PC. [Procedura Ollama per NVIDIA in Docker](https://docs.ollama.com/docker).
+
+Questa modalità è destinata a PC/server con NVIDIA compatibile con Ollama e driver aggiornati. Non abilita Metal sui Mac né le GPU AMD. Sistemi Jetson/JetPack richiedono configurazione specifica e non sono coperti dal launcher standard.
+
+Come stima per Llama 8B quantizzato con contesto di 8.192 token, prevedere **8 GB di VRAM libera come punto di partenza**, preferibilmente **12 GB per avere margine**. Non è un minimo certificato: la memoria necessaria dipende da GPU, contesto e modello. La VRAM è distinta dalla RAM di sistema; restano le risorse richieste dagli altri servizi. Con poca VRAM Ollama può distribuire il modello tra GPU e CPU, riducendo il beneficio in velocità.
+
+### Avvio semplice e controlli automatici
+
+- **Windows:** doppio clic su **`avvia-gpu.bat`**.
+- **Linux:** eseguire **`sh avvia-gpu.sh`** nella cartella estratta.
+
+Gli stessi avvii sono disponibili come `avvia.bat --gpu` e `sh avvia.sh --gpu`. Usare sempre il launcher GPU per i successivi riavvii; per tornare alla CPU usare quello normale.
+
+Il launcher esegue prima `nvidia-smi -L` in un container temporaneo ricavato dalla stessa immagine Ollama, con la stessa richiesta di GPU. Se Docker non vede NVIDIA, termina **prima di fermare l'applicazione già in esecuzione**. Durante il setup, dopo una vera generazione di prova, controlla `size_vram` nell'[API dei modelli caricati di Ollama](https://docs.ollama.com/api/ps):
+
+- **`GPU check passed`** indica che Llama ha allocato memoria GPU.
+- **`partially on GPU`** segnala l'uso misto GPU/CPU: l'avvio è consentito, ma può essere più lento.
+- **`no GPU memory`** blocca il setup; il pacchetto non dichiara pronta la modalità GPU se Llama sta usando solo la CPU.
+
+L'uso della GPU viene verificato per Llama durante il setup. Il modello di embedding usa lo stesso server Ollama, che ne gestisce automaticamente l'esecuzione; non viene certificato separatamente il suo caricamento sulla GPU.
+
+Per un controllo manuale dell'accesso NVIDIA, senza avviare l'app:
+
+```sh
+docker compose -f compose.delivery.yml -f compose.delivery.gpu.yml run --rm --no-deps --entrypoint nvidia-smi ollama -L
+```
+
+Per avviare direttamente tramite Compose, da stack fermo:
 
 ```sh
 docker compose -f compose.delivery.yml -f compose.delivery.gpu.yml up --build --wait --wait-timeout 7200
 ```
 
-Il file aggiuntivo assegna la GPU al solo container Ollama. Su Linux servono i driver e NVIDIA Container Toolkit; la configurazione è descritta nella [documentazione Ollama per Docker](https://docs.ollama.com/docker) e nella [guida Docker Compose per le GPU](https://docs.docker.com/compose/how-tos/gpu-support/). Non usare questa variante su Mac o su computer senza NVIDIA. Per mantenere la GPU ai successivi avvii riutilizzare questo comando, preceduto da `docker compose -f compose.delivery.yml down`.
+Durante una domanda alla chat, o subito dopo, verificare dove risiede il modello:
+
+```sh
+docker compose -f compose.delivery.yml -f compose.delivery.gpu.yml exec ollama ollama ps
+docker compose -f compose.delivery.yml -f compose.delivery.gpu.yml logs --tail 100 setup ollama
+```
+
+La colonna `PROCESSOR` di `ollama ps` distingue GPU, CPU e caricamento misto. Se non mostra modelli, può essere già scaduto il periodo di permanenza in memoria: ripetere durante una richiesta. Il modello di embedding può sostituire temporaneamente Llama perché il pacchetto carica un modello alla volta.
+
+Per ridurre la memoria richiesta, prima del launcher GPU si può impostare `DELIVERY_NUM_CTX=4096`: `export DELIVERY_NUM_CTX=4096` su Linux, `set DELIVERY_NUM_CTX=4096` nel Prompt dei comandi Windows oppure `$env:DELIVERY_NUM_CTX="4096"` in PowerShell. Un contesto più piccolo lascia meno spazio a cronologia e documenti; non garantisce prestazioni o qualità equivalenti.
+
+L'accelerazione NVIDIA può migliorare i tempi di inferenza, ma non corregge gli errori di ragionamento, traduzione o scelta degli strumenti del modello. La configurazione segue la [specifica GPU di Docker Compose](https://docs.docker.com/compose/how-tos/gpu-support/); il collaudo su una GPU reale resta necessario per misurare memoria e tempi.
 
 ## Risoluzione dei problemi
 
@@ -160,6 +213,9 @@ Il file aggiuntivo assegna la GPU al solo container Ollama. Su Linux servono i d
 | Preparazione apparentemente ferma | Seguire i log di `setup`; l'indicizzazione può durare a lungo su CPU. |
 | Container terminato con codice 137, errore di memoria o chat molto lenta | Aumentare la memoria disponibile a Docker e chiudere applicazioni pesanti; usare la variante GPU se disponibile. |
 | App attiva ma risposta molto lenta | Su CPU sono possibili più minuti per domanda. Controllare i log di `backend`, `agents` e `ollama`. |
+| `could not select device driver` o `nvidia-smi` fallisce | Verificare driver e NVIDIA Container Toolkit su Linux, oppure driver, WSL2 e backend Docker Desktop su Windows. Il launcher GPU non passa automaticamente alla CPU. |
+| `no GPU memory` durante il setup | Leggere i log Ollama: controllare compatibilità della GPU, driver, runtime e VRAM libera. Rilanciare il launcher GPU dopo la correzione. |
+| `partially on GPU` o uso misto in `ollama ps` | Liberare VRAM occupata da altre applicazioni o provare `DELIVERY_NUM_CTX=4096`; la parte del modello sulla CPU può rallentare le risposte. |
 | Risposta incompleta o strumenti scelti male | Llama 3.1 8B è un modello locale compatto; le risposte vanno verificate sulle fonti e non ne è garantita la correttezza. |
 | Interfaccia precedente rimasta nel browser | Ricaricare la pagina; se necessario cancellare i dati del sito/PWA per `localhost:8080`. |
 
@@ -217,3 +273,13 @@ Ambiente provato: macOS ARM64, 32 GB di RAM fisica, Docker configurato con 16 GB
 **Limiti emersi nella prova del modello:** per un semplice saluto, Llama 3.1 8B ha impiegato circa 7 minuti per la prima decisione e ha chiamato erroneamente `search_iot` con una domanda vuota. Questa prova è stata interrotta. La risposta sul manuale è arrivata con fonti pertinenti, ma contiene difetti di traduzione e formattazione. L'installazione riuscita e i test automatici non certificano la qualità delle risposte del modello: questa versione 8B richiede una verifica dei contenuti prima della dimostrazione.
 
 Lo script Windows e la variante NVIDIA sono predisposti; non sono stati eseguiti su hardware Windows/NVIDIA durante questo collaudo.
+
+### Verifiche dell'avvio NVIDIA (26 ottobre 2026)
+
+- Aggiunti `avvia-gpu.bat` e `avvia-gpu.sh`, con verifica NVIDIA prima di fermare l'app e controllo della VRAM di Llama prima dell'ingestion.
+- Configurazioni Compose CPU e NVIDIA validate, comprese la richiesta di GPU, le variabili del setup e il riutilizzo degli stessi volumi.
+- Immagine degli agenti ricostruita; **36 test mirati degli agenti** e **5 test dei launcher POSIX** superati. I casi GPU positivi sono simulati: includono caricamento interamente/parzialmente in VRAM, ripiego su CPU, modello assente e fallimento della verifica.
+- Sul Mac senza NVIDIA il launcher GPU è stato realmente eseguito: ha rifiutato l'avvio e i container dell'app già attivi sono rimasti in esecuzione.
+- Prova reale di un token su CPU completata con il nuovo bootstrap. Richiedendo poi la GPU allo stesso Ollama, il controllo ha correttamente rifiutato la VRAM pari a zero.
+
+Non è stato possibile eseguire una generazione su GPU NVIDIA reale o avviare i file `.bat` su Windows. Non sono quindi certificati tempi di risposta, VRAM necessaria o funzionamento su uno specifico modello di scheda. Le prove del 25 ottobre restano il riferimento per il percorso completo della chat su CPU.

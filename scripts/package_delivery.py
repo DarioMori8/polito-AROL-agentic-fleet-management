@@ -14,7 +14,7 @@ SOURCE_DIRS = {"agents", "backend", "frontend", "mock-backoffice", "shared", "te
 ROOT_FILES = {
     "README.md", "CONSEGNA.md", ".dockerignore", ".gitignore", ".env.example",
     "compose.delivery.yml", "compose.delivery.gpu.yml", "docker-compose.yml",
-    "avvia.sh", "avvia.bat",
+    "avvia.sh", "avvia.bat", "avvia-gpu.sh", "avvia-gpu.bat",
 }
 SERIALS = {"15610", "17203", "17478", "17579", "A2055", "A2064", "A2132", "A4344"}
 

@@ -4,10 +4,15 @@ from unittest.mock import MagicMock, patch
 import ollama
 
 from core.config import settings
-from manuals_agent.bootstrap import ensure_model, main, verify_inference
+from manuals_agent.bootstrap import ensure_model, main, verify_gpu, verify_inference
 
 
 class BootstrapTest(unittest.TestCase):
+    def setUp(self):
+        cpu_mode = patch.object(settings, "SETUP_REQUIRE_GPU", False)
+        cpu_mode.start()
+        self.addCleanup(cpu_mode.stop)
+
     def test_existing_model_is_reused_without_network_pull(self):
         client = MagicMock()
         client.show.return_value = {"capabilities": ["tools"]}
@@ -82,6 +87,69 @@ class BootstrapTest(unittest.TestCase):
         client.chat.return_value = {"done": False}
         with self.assertRaisesRegex(RuntimeError, "did not complete"):
             verify_inference(client)
+
+    def test_gpu_mode_checks_resident_model_using_sdk_response(self):
+        client = MagicMock()
+        client.chat.return_value = ollama.ChatResponse(
+            model="llama3.1:8b", done=True, message={"role": "assistant", "content": "OK"},
+        )
+        client.ps.return_value = ollama.ProcessResponse(models=[{
+            "model": "llama3.1:8b", "size": 6_000_000_000, "size_vram": 6_000_000_000,
+        }])
+        with patch.object(settings, "SETUP_REQUIRE_GPU", True):
+            verify_inference(client)
+        self.assertEqual(client.chat.call_args.kwargs["keep_alive"], "5m")
+        client.ps.assert_called_once()
+
+    def test_cpu_mode_does_not_require_gpu_introspection(self):
+        client = MagicMock()
+        client.chat.return_value = {"done": True}
+        verify_inference(client)
+        client.ps.assert_not_called()
+
+    def test_gpu_mode_rejects_cpu_fallback_missing_model_and_unrelated_gpu(self):
+        for models in (
+            [],
+            [{"model": "llama3.1:8b", "size_vram": 0}],
+            [{"model": "llama3.1:8b"}],
+            [{"model": "nomic-embed-text:latest", "size_vram": 500_000_000}],
+        ):
+            with self.subTest(models=models):
+                client = MagicMock()
+                client.chat.return_value = {"done": True, "model": "llama3.1:8b"}
+                client.ps.return_value = {"models": models}
+                with patch.object(settings, "SETUP_REQUIRE_GPU", True), \
+                        self.assertRaisesRegex(RuntimeError, "no GPU memory"):
+                    verify_inference(client)
+
+    def test_partial_gpu_offload_is_allowed_but_reported(self):
+        client = MagicMock()
+        client.ps.return_value = {"models": [
+            {"model": "llama3.1:8b", "size": 6_000_000_000, "size_vram": 3_000_000_000},
+        ]}
+        with patch("builtins.print") as output:
+            verify_gpu(client, "llama3.1:8b")
+        self.assertTrue(any("partially on GPU" in str(call) for call in output.call_args_list))
+
+    def test_gpu_model_name_accepts_implicit_latest_tag(self):
+        client = MagicMock()
+        client.ps.return_value = {"models": [{"name": "custom:latest", "size_vram": 100}]}
+        verify_gpu(client, "custom")
+
+    def test_gpu_introspection_error_is_not_success(self):
+        client = MagicMock()
+        client.ps.side_effect = ollama.ResponseError("Unavailable", status_code=503)
+        with self.assertRaises(ollama.ResponseError):
+            verify_gpu(client, "llama3.1:8b")
+
+    def test_failed_device_check_prevents_ingestion(self):
+        with patch("manuals_agent.bootstrap.prepare_manuals", return_value=[MagicMock()]), \
+                patch("manuals_agent.bootstrap.ensure_model"), \
+                patch("manuals_agent.bootstrap.verify_inference", side_effect=RuntimeError("no GPU memory")), \
+                patch("manuals_agent.bootstrap.seed_manuals") as ingest:
+            with self.assertRaisesRegex(RuntimeError, "no GPU memory"):
+                main()
+        ingest.assert_not_called()
 
 
 if __name__ == "__main__":
