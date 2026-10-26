@@ -66,19 +66,19 @@ if "up" in args and os.environ.get("AROL_FAIL_SETUP") == "1": sys.exit(1)
         self.assertIn("--no-deps", operations[0])
         self.assertIn("stop", operations[1])
         self.assertIn("up", operations[2])
-        self.assertIn("Pronto:", result.stdout)
+        self.assertIn("Ready:", result.stdout)
 
     def test_missing_nvidia_stops_before_disrupting_running_application(self):
         result, calls = self.run_launcher("--gpu", AROL_FAIL_GPU="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any("stop" in c or "up" in c for c in calls))
-        self.assertNotIn("Pronto:", result.stdout)
-        self.assertIn("CONSEGNA.md", result.stderr)
+        self.assertNotIn("Ready:", result.stdout)
+        self.assertIn("DELIVERY.md", result.stderr)
 
     def test_failed_gpu_setup_shows_logs_and_never_reports_ready(self):
         result, calls = self.run_launcher("--gpu", AROL_FAIL_SETUP="1")
         self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("Pronto:", result.stdout)
+        self.assertNotIn("Ready:", result.stdout)
         self.assertIn("logs", calls[-1])
         self.assertIn("compose.delivery.gpu.yml", calls[-1])
 

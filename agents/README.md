@@ -64,7 +64,7 @@ Request and response schemas are in `shared/contracts/` (`manuals.py`, `docs.py`
 ## Manual ingestion
 
 For the self-contained delivery, ingestion runs automatically before the agents
-start; see [CONSEGNA.md](../CONSEGNA.md). The instructions below are for the
+start; see [DELIVERY.md](../DELIVERY.md). The instructions below are for the
 development stack.
 
 The Manuals Agent needs a Chroma index built from the PDFs in `data/manuals/` (repo root). The ingestion:

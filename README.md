@@ -2,19 +2,19 @@
 
 Conversational platform for AROL plant operators: an LLM orchestrator routes each question to specialized agents for technical manuals, commercial data, telemetry, alarms and maintenance.
 
-## Consegna al docente: avvio automatico
+## Delivery to the instructor: automatic start
 
-La guida per installare e provare il progetto è **[CONSEGNA.md](CONSEGNA.md)**.
-Il pacchetto di consegna usa `compose.delivery.yml`: include Ollama, scarica
-Llama 3.1 8B e il modello di embedding, indicizza i manuali e inizializza Langfuse.
-È sufficiente installare e aprire Docker, estrarre il pacchetto e avviare
-`avvia.bat` su Windows oppure `sh avvia.sh` su macOS/Linux. Non serve creare `.env`.
-Su Windows/Linux con GPU NVIDIA configurata per Docker, usare invece
-`avvia-gpu.bat` oppure `sh avvia-gpu.sh`: il setup controlla anche l'uso effettivo della GPU.
-Prerequisiti e diagnosi sono nella [sezione NVIDIA della guida](CONSEGNA.md#gpu-nvidia-opzionale).
+The guide to install and try the project is **[DELIVERY.md](DELIVERY.md)**.
+The delivery package uses `compose.delivery.yml`: it includes Ollama, downloads
+Llama 3.1 8B and the embedding model, indexes the manuals and initializes Langfuse.
+Install and open Docker, extract the package and run
+`avvia.bat` on Windows or `sh avvia.sh` on macOS/Linux. No `.env` is needed.
+On Windows/Linux with an NVIDIA GPU configured for Docker, use
+`avvia-gpu.bat` or `sh avvia-gpu.sh` instead: the setup also checks that the GPU is actually used.
+Prerequisites and troubleshooting are in the [NVIDIA section of the guide](DELIVERY.md#optional-nvidia-gpu).
 
-Le sezioni seguenti descrivono invece l'ambiente di **sviluppo** preesistente,
-con Ollama sull'host e il file `docker-compose.yml`.
+The following sections describe the existing **development** environment,
+with Ollama on the host and the `docker-compose.yml` file.
 
 ## Repository structure
 
