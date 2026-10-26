@@ -11,6 +11,11 @@ RUN npm ci
 # Copy source files and configuration
 COPY frontend/ .
 
+# Use Nginx's same-origin API proxy in the packaged app.
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_USE_MOCK=false
+
 # Build the application with production optimizations
 RUN npm run build
 

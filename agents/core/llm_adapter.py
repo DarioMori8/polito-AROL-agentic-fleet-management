@@ -46,7 +46,7 @@ class OllamaAdapter(LLMAdapter):
             input={"messages": messages, "tools": tools},
             model_parameters=payload["options"],
         ) as generation:
-            async with httpx.AsyncClient(timeout=100) as client:
+            async with httpx.AsyncClient(timeout=settings.OLLAMA_REQUEST_TIMEOUT_SECONDS) as client:
                 r = await client.post(f"{self.base_url}/api/chat", json=payload)
                 r.raise_for_status()
 

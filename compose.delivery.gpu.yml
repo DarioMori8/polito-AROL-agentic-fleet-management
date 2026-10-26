@@ -1,0 +1,10 @@
+# Optional NVIDIA acceleration; requires a working NVIDIA Docker runtime.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

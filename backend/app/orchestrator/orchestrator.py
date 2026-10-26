@@ -124,7 +124,7 @@ def _build_llm():
         model=settings.ORCHESTRATOR_OLLAMA_MODEL,
         base_url=settings.ORCHESTRATOR_OLLAMA_BASE_URL,
         num_ctx=settings.ORCHESTRATOR_NUM_CTX,
-        reasoning=True,
+        reasoning=settings.ORCHESTRATOR_REASONING,
     )
 
 

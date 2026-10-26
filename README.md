@@ -2,6 +2,17 @@
 
 Conversational platform for AROL plant operators: an LLM orchestrator routes each question to specialized agents for technical manuals, commercial data, telemetry, alarms and maintenance.
 
+## Consegna al docente: avvio automatico
+
+La guida per installare e provare il progetto è **[CONSEGNA.md](CONSEGNA.md)**.
+Il pacchetto di consegna usa `compose.delivery.yml`: include Ollama, scarica
+Llama 3.1 8B e il modello di embedding, indicizza i manuali e inizializza Langfuse.
+È sufficiente installare e aprire Docker, estrarre il pacchetto e avviare
+`avvia.bat` su Windows oppure `sh avvia.sh` su macOS/Linux. Non serve creare `.env`.
+
+Le sezioni seguenti descrivono invece l'ambiente di **sviluppo** preesistente,
+con Ollama sull'host e il file `docker-compose.yml`.
+
 ## Repository structure
 
 | Folder | Content | Port | Docs |
@@ -125,13 +136,14 @@ The healthchecks start the services in order: mock-backoffice, agents, backend, 
 The Manuals Agent searches a Chroma index, which must be built once with the stack running:
 
 ```bash
-docker compose exec agents python -m manuals_agent.ingestion
+docker compose stop frontend backend agents
+docker compose run --rm --no-deps agents python -m manuals_agent.ingestion
 ```
 
-It takes several minutes. The index is saved in `agents/data/chroma/` and survives `docker compose down`. When it finishes, restart the agents so they see the new index:
+It takes several minutes. The index is saved in `agents/data/chroma/` and survives `docker compose down`. When it finishes, start the application again so the agents see the new index:
 
 ```bash
-docker compose restart agents
+docker compose up -d agents backend frontend
 ```
 
 ### 8. Check
