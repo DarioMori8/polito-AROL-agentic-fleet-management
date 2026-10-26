@@ -14,7 +14,7 @@ x-agents: &agents
     <<: *tracing
     PYTHONUNBUFFERED: "1"
     OLLAMA_BASE_URL: http://ollama:11434
-    OLLAMA_MODEL: ${DELIVERY_LLM_MODEL:-llama3.1:8b}
+    OLLAMA_MODEL: ${DELIVERY_LLM_MODEL:-gpt-oss:20b}
     OLLAMA_NUM_CTX: ${DELIVERY_NUM_CTX:-8192}
     OLLAMA_REQUEST_TIMEOUT_SECONDS: "600"
     EMBEDDING_MODEL: ${DELIVERY_EMBEDDING_MODEL:-nomic-embed-text}
@@ -73,12 +73,12 @@ x-langfuse-dependencies: &langfuse-dependencies
 
 services:
   ollama:
-    image: ollama/ollama:0.13.5@sha256:2c9595c555fd70a28363489ac03bd5bf9e7c5bdf2890373c3a830ffd7252ce6d
+    image: ollama/ollama:latest
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
       OLLAMA_NO_CLOUD: "1"
       OLLAMA_NUM_PARALLEL: "1"
-      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_MAX_LOADED_MODELS: "2"
       # Keep the default launcher on CPU even on hosts with an NVIDIA default runtime.
       NVIDIA_VISIBLE_DEVICES: void
     volumes:
@@ -149,8 +149,11 @@ services:
       AGENTS_SERVICE_URL: http://agents:8001
       AGENTS_REQUEST_TIMEOUT_SECONDS: "1800"
       ORCHESTRATOR_OLLAMA_BASE_URL: http://ollama:11434
-      ORCHESTRATOR_OLLAMA_MODEL: ${DELIVERY_LLM_MODEL:-llama3.1:8b}
+      ORCHESTRATOR_OLLAMA_MODEL: ${DELIVERY_LLM_MODEL:-gpt-oss:20b}
       ORCHESTRATOR_NUM_CTX: ${DELIVERY_NUM_CTX:-8192}
+      # gpt-oss streams its thinking only when reasoning is enabled explicitly.
+      # Set DELIVERY_REASONING=false for models without thinking (e.g. llama3.1).
+      ORCHESTRATOR_REASONING: ${DELIVERY_REASONING:-true}
       MANUALS_DIR: /data/manuals
       GUEST_QR_BASE_URL: http://localhost:${DELIVERY_APP_PORT:-8080}/machine
     volumes:
