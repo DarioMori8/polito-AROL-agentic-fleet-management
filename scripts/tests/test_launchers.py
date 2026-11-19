@@ -73,7 +73,7 @@ if "up" in args and os.environ.get("AROL_FAIL_SETUP") == "1": sys.exit(1)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any("stop" in c or "up" in c for c in calls))
         self.assertNotIn("Ready:", result.stdout)
-        self.assertIn("DELIVERY.md", result.stderr)
+        self.assertIn("SETUP.md", result.stderr)
 
     def test_failed_gpu_setup_shows_logs_and_never_reports_ready(self):
         result, calls = self.run_launcher("--gpu", AROL_FAIL_SETUP="1")

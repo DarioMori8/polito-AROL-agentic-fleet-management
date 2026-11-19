@@ -4,12 +4,31 @@
 
 1. **Install and open [Docker Desktop](https://www.docker.com/products/docker-desktop/)**. On Linux, Docker Engine with Docker Compose v2 also works. Wait until Docker is running.
    Make sure Docker has **at least 16 GB of RAM** assigned. On installations that show the limit in Docker Desktop: **Settings → Resources → Advanced → Memory**, then apply and restart. With WSL2, the virtual machine memory is configured in the WSL settings. The computer's total RAM and the RAM assigned to Docker are two different values.
-2. **Extract the whole ZIP package** into a local folder. The PDFs must already be in `data/manuals/`.
-3. **Start the project**:
+2. **Extract the whole ZIP package** (or clone the repository) into a local folder.
+3. **Add the manual PDFs.** The AROL manuals are not included in the repository. Create the folder `data/manuals/` in the project root (next to `avvia.sh` and `compose.delivery.yml`) and copy the eight PDFs into it, **without renaming them**:
+
+   ```text
+   <project root>/
+     avvia.sh
+     compose.delivery.yml
+     data/
+       manuals/
+         15610_manual_EN.pdf
+         17203_manual_EN.pdf
+         17478_manual_EN.pdf
+         17579_manual_EN.pdf
+         A2055_manual_EN.pdf
+         A2064_manual_EN.pdf
+         A2132_manual_EN.pdf
+         A4344_manual_EN.pdf
+   ```
+
+   On macOS/Linux the folder can be created with `mkdir -p data/manuals`. If the ZIP package already contains `data/manuals/` with the PDFs, this step is already done. The start scripts stop with `Manuals missing` if the folder is empty.
+4. **Start the project**:
    - **Windows:** double-click `avvia.bat` in the extracted folder.
    - **macOS/Linux:** open a terminal in the extracted folder and run `sh avvia.sh`.
    - **With an NVIDIA GPU on Windows/Linux:** after the [GPU prerequisites](#optional-nvidia-gpu), use `avvia-gpu.bat` on Windows or `sh avvia-gpu.sh` on Linux instead.
-4. Wait for the **Ready** message, then open **[http://localhost:8080](http://localhost:8080)**.
+5. Wait for the **Ready** message, then open **[http://localhost:8080](http://localhost:8080)**.
 
 Application credentials:
 
@@ -124,7 +143,7 @@ docker compose -f compose.delivery.yml logs --tail 100 backend agents
 
 ## Manuals and persistence
 
-The original PDFs are in `data/manuals/` and are mounted read-only. Do not move or delete the extracted folder while the project is in use.
+The original PDFs must be placed in `data/manuals/` in the project root (see step 3 of the quick start) and are mounted read-only. Do not move or delete the extracted folder while the project is in use.
 
 Docker volumes keep Ollama models, Chroma index, application database, loaded dataset and Langfuse data separately. They are isolated from the development environment by the `arol-delivery` project name. A normal `down` does not delete them.
 
@@ -207,7 +226,7 @@ NVIDIA acceleration can improve inference times, but it does not fix the model's
 | Docker does not respond | Open Docker Desktop and wait until the engine is ready. On Linux, start Docker Engine. |
 | Port already in use | Stop the other application or the development stack using 8080/3000. |
 | `setup` ends with an error | Read `docker compose -f compose.delivery.yml logs setup`. Fix the cause and run the script again. |
-| `Missing manuals`, `No PDF manuals` or folder not found | Check that the ZIP was fully extracted and contains all the PDFs in `data/manuals/`. |
+| `Missing manuals`, `No PDF manuals` or folder not found | Check that the folder `data/manuals/` exists in the project root and contains all eight PDFs with their original names. |
 | Invalid PDF name or unknown serial | Restore the original name `<serial>_manual_EN.pdf`. |
 | Download interrupted | Restore the connection and run the script again. Data already downloaded stays in the Ollama volume. |
 | Preparation seems stuck | Follow the `setup` logs; indexing can take long on CPU. |

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "dist-delivery" / "arol-fleet-management.zip"
 SOURCE_DIRS = {"agents", "backend", "frontend", "mock-backoffice", "shared", "tests", "scripts", "langfuse-local"}
 ROOT_FILES = {
-    "README.md", "DELIVERY.md", ".dockerignore", ".gitignore", ".env.example",
+    "README.md", "SETUP.md", ".dockerignore", ".gitignore", ".env.example",
     "compose.delivery.yml", "compose.delivery.gpu.yml", "docker-compose.yml",
     "avvia.sh", "avvia.bat", "avvia-gpu.sh", "avvia-gpu.bat",
 }

@@ -28,7 +28,7 @@ if "%AROL_USE_GPU%"=="1" (
     echo NVIDIA mode: checking GPU access from the Ollama container...
     docker compose %AROL_COMPOSE_FILES% run --rm --no-deps --entrypoint nvidia-smi ollama -L
     if errorlevel 1 (
-        echo NVIDIA GPU not accessible to Docker. See the NVIDIA section of DELIVERY.md.
+        echo NVIDIA GPU not accessible to Docker. See the NVIDIA section of SETUP.md.
         echo Windows needs up-to-date NVIDIA drivers and Docker Desktop with WSL2.
         goto :failed
     )
@@ -56,6 +56,6 @@ exit /b 0
 echo Usage: avvia.bat [--gpu^|--cpu]
 goto :failed
 :failed
-echo Start not completed. See DELIVERY.md and the Docker logs.
+echo Start not completed. See SETUP.md and the Docker logs.
 pause
 exit /b 1

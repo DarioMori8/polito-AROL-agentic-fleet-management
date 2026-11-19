@@ -37,7 +37,7 @@ fi
 if [ "$AROL_USE_GPU" = 1 ]; then
     echo "NVIDIA mode: checking GPU access from the Ollama container..."
     if ! compose run --rm --no-deps --entrypoint nvidia-smi ollama -L; then
-        echo "NVIDIA GPU not accessible to Docker. See the NVIDIA section of DELIVERY.md." >&2
+        echo "NVIDIA GPU not accessible to Docker. See the NVIDIA section of SETUP.md." >&2
         echo "Linux needs drivers and the NVIDIA Container Toolkit; Windows needs Docker Desktop with WSL2." >&2
         exit 1
     fi
@@ -51,7 +51,7 @@ echo "Preparing: the first start downloads the models and indexes the manuals."
 echo "Progress in another terminal: docker compose -f compose.delivery.yml logs -f setup"
 if ! compose up --build --wait --wait-timeout 7200; then
     compose logs --tail 30 setup
-    echo "Start not completed. See the error above and DELIVERY.md." >&2
+    echo "Start not completed. See the error above and SETUP.md." >&2
     exit 1
 fi
 echo "Ready: http://localhost:${DELIVERY_APP_PORT:-8080}"

@@ -50,7 +50,7 @@ def verify_gpu(client, model: str) -> None:
             return
     raise RuntimeError(
         f"GPU mode requested, but Ollama reports no GPU memory for {model}. "
-        "Check NVIDIA drivers, Docker GPU access and free VRAM; see DELIVERY.md. "
+        "Check NVIDIA drivers, Docker GPU access and free VRAM; see SETUP.md. "
         "Setup stopped instead of silently accepting CPU-only inference."
     )
 
