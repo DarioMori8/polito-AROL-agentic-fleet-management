@@ -5,6 +5,9 @@
 
 Conversational platform for AROL plant operators: an LLM orchestrator routes each question to specialized agents for technical manuals, commercial data, telemetry, alarms and maintenance.
 
+> [!IMPORTANT]
+> **Disclaimer — synthetic data.** All the company data in this repository (customers, machines, quotes, orders, telemetry, alarms, maintenance tickets and user accounts) is **synthetic**. It was generated for this university project, using AROL's business domain as a reference, and does not describe real customers, real machines or real business figures. Any resemblance to real people or companies is coincidental. The AROL technical manuals are not included and are not covered by this repository's license. AROL names and trademarks belong to their owner. This is a student project developed at Politecnico di Torino and is not an official AROL product.
+
 ## Delivery to the instructor: automatic start
 
 The guide to install and try the project is **[SETUP.md](SETUP.md)**.
@@ -217,3 +220,5 @@ Each Python service lists in `requirements.txt` only the libraries it uses direc
 | Stop everything | `docker compose down` |
 
 To work on a single service outside Docker, follow the README in its folder.
+
+
