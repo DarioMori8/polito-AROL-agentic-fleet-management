@@ -1,6 +1,23 @@
 # Polito x AROL - Agentic Fleet Management
 
+> **To install and run the whole project, follow [SETUP.md](SETUP.md).**
+> In short: install Docker, copy the manual PDFs into `data/manuals/` in the project root, then run `sh avvia.sh` (macOS/Linux) or `avvia.bat` (Windows).
+
 Conversational platform for AROL plant operators: an LLM orchestrator routes each question to specialized agents for technical manuals, commercial data, telemetry, alarms and maintenance.
+
+## Delivery to the instructor: automatic start
+
+The guide to install and try the project is **[SETUP.md](SETUP.md)**.
+The delivery package uses `compose.delivery.yml`: it includes Ollama, downloads
+Llama 3.1 8B and the embedding model, indexes the manuals and initializes Langfuse.
+Install and open Docker, extract the package and run
+`avvia.bat` on Windows or `sh avvia.sh` on macOS/Linux. No `.env` is needed.
+On Windows/Linux with an NVIDIA GPU configured for Docker, use
+`avvia-gpu.bat` or `sh avvia-gpu.sh` instead: the setup also checks that the GPU is actually used.
+Prerequisites and troubleshooting are in the [NVIDIA section of the guide](SETUP.md#optional-nvidia-gpu).
+
+The following sections describe the existing **development** environment,
+with Ollama on the host and the `docker-compose.yml` file.
 
 ## Repository structure
 
@@ -125,13 +142,14 @@ The healthchecks start the services in order: mock-backoffice, agents, backend, 
 The Manuals Agent searches a Chroma index, which must be built once with the stack running:
 
 ```bash
-docker compose exec agents python -m manuals_agent.ingestion
+docker compose stop frontend backend agents
+docker compose run --rm --no-deps agents python -m manuals_agent.ingestion
 ```
 
-It takes several minutes. The index is saved in `agents/data/chroma/` and survives `docker compose down`. When it finishes, restart the agents so they see the new index:
+It takes several minutes. The index is saved in `agents/data/chroma/` and survives `docker compose down`. When it finishes, start the application again so the agents see the new index:
 
 ```bash
-docker compose restart agents
+docker compose up -d agents backend frontend
 ```
 
 ### 8. Check

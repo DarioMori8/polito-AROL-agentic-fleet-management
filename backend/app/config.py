@@ -58,7 +58,10 @@ class Settings(BaseSettings):
     # Max agent->tools round trips per turn; the graph's recursion_limit is
     # derived from it.
     ORCHESTRATOR_MAX_ITERATIONS: int = 5
-    ORCHESTRATOR_NUM_CTX: int = 16384
+    ORCHESTRATOR_NUM_CTX: int = 4096
+    # Leave the model default unchanged unless explicitly overridden.
+    # llama3.1 does not support enabling thinking.
+    ORCHESTRATOR_REASONING: bool | None = None
 
     # --- Observability (Langfuse)
     LANGFUSE_PUBLIC_KEY: str

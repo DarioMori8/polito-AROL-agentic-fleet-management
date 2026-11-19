@@ -15,6 +15,8 @@ temp
 # Secrets: the containers get their variables from docker-compose
 .env
 .env.*
+**/.env
+**/.env.*
 
 # Python
 **/venv
@@ -37,5 +39,6 @@ mock-backoffice/data
 
 # Not part of any image
 langfuse-local
+dist-delivery
 tests
 **/README.md

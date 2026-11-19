@@ -44,7 +44,7 @@ class VectorStore:
         """Add chunks in batches to avoid Ollama embedding timeouts on large PDFs."""
         for start in range(0, len(ids), INGESTION_BATCH_SIZE):
             end = start + INGESTION_BATCH_SIZE
-            self.collection.add(
+            self.collection.upsert(
                 ids=ids[start:end],
                 documents=chunks[start:end],
                 metadatas=metadatas[start:end],
@@ -52,6 +52,12 @@ class VectorStore:
 
     def has_chunks(self, where: dict) -> bool:
         return bool(self.collection.get(where=where, limit=1)["ids"])
+
+    def count_document(self, name: str) -> int:
+        return len(self.collection.get(where={"doc": name}, include=[])["ids"])
+
+    def delete_document(self, name: str) -> None:
+        self.collection.delete(where={"doc": name})
 
     def get_languages(self, where: dict) -> list[str]:
         with get_langfuse().start_as_current_observation(
@@ -86,3 +92,15 @@ def get_vector_store() -> VectorStore:
     if _store is None:
         _store = VectorStore()
     return _store
+
+
+def reset_vector_store() -> VectorStore:
+    """Rebuild derived data when the embedding model or chunk format changes."""
+    global _store
+    client = chromadb.PersistentClient(path=settings.CHROMA_PATH)
+    try:
+        client.delete_collection(COLLECTION_NAME)
+    except chromadb.errors.NotFoundError:
+        pass
+    _store = None
+    return get_vector_store()

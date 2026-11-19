@@ -1,0 +1,293 @@
+# Self-contained local delivery. No .env or host Ollama required.
+# DELIVERY_* variables deliberately do not reuse the development .env settings.
+name: arol-delivery
+
+x-tracing: &tracing
+  LANGFUSE_HOST: http://langfuse-web:3000
+  LANGFUSE_PUBLIC_KEY: pk-lf-arol-local-demo
+  LANGFUSE_SECRET_KEY: sk-lf-arol-local-demo
+  LANGFUSE_TRACING_ENABLED: "true"
+
+x-agents: &agents
+  image: arol-delivery-agents:local
+  environment: &agents-env
+    <<: *tracing
+    PYTHONUNBUFFERED: "1"
+    OLLAMA_BASE_URL: http://ollama:11434
+    OLLAMA_MODEL: ${DELIVERY_LLM_MODEL:-gpt-oss:20b}
+    OLLAMA_NUM_CTX: ${DELIVERY_NUM_CTX:-8192}
+    OLLAMA_REQUEST_TIMEOUT_SECONDS: "600"
+    EMBEDDING_MODEL: ${DELIVERY_EMBEDDING_MODEL:-nomic-embed-text}
+    CHROMA_PATH: /app/data/chroma
+    MANUALS_PATH: /data/manuals
+    DOCS_SERVICE_URL: http://mock-backoffice:8003
+    IOT_SERVICE_URL: http://mock-backoffice:8003
+  volumes:
+    - manuals-index:/app/data/chroma
+    - type: bind
+      source: ./data/manuals
+      target: /data/manuals
+      read_only: true
+      bind:
+        create_host_path: false
+
+x-langfuse-env: &langfuse-env
+  DATABASE_URL: postgresql://langfuse:arol-demo-postgres@postgres:5432/langfuse
+  NEXTAUTH_URL: http://localhost:${DELIVERY_LANGFUSE_PORT:-3000}
+  NEXTAUTH_SECRET: arol-local-demo-nextauth-secret-2026
+  SALT: arol-local-demo-salt-2026
+  ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  TELEMETRY_ENABLED: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: clickhouse
+  CLICKHOUSE_PASSWORD: arol-demo-clickhouse
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: arol-demo-redis
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: arol-demo-minio
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: arol-demo-minio
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+
+x-langfuse-dependencies: &langfuse-dependencies
+  postgres:
+    condition: service_healthy
+  clickhouse:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  minio:
+    condition: service_healthy
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      # Keep the default launcher on CPU even on hosts with an NVIDIA default runtime.
+      NVIDIA_VISIBLE_DEVICES: void
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+  mock-backoffice:
+    build:
+      context: .
+      dockerfile: mock-backoffice/Dockerfile
+    command: [uvicorn, main:app, --host, 0.0.0.0, --port, "8003"]
+    volumes:
+      - backoffice-data:/app/data
+    healthcheck:
+      test: [CMD, python, -c, "import json, urllib.request; assert json.load(urllib.request.urlopen('http://localhost:8003/machines'))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  setup:
+    <<: *agents
+    pull_policy: never
+    command: [python, -u, -m, manuals_agent.bootstrap]
+    environment:
+      <<: *agents-env
+      LANGFUSE_TRACING_ENABLED: "false"
+    depends_on:
+      ollama:
+        condition: service_healthy
+      mock-backoffice:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_healthy
+      langfuse-worker:
+        condition: service_started
+    restart: "no"
+
+  agents:
+    <<: *agents
+    build:
+      context: .
+      dockerfile: agents/Dockerfile
+    command: [uvicorn, main:app, --host, 0.0.0.0, --port, "8001"]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      langfuse-web:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      <<: *tracing
+      AGENTS_SERVICE_URL: http://agents:8001
+      AGENTS_REQUEST_TIMEOUT_SECONDS: "1800"
+      ORCHESTRATOR_OLLAMA_BASE_URL: http://ollama:11434
+      ORCHESTRATOR_OLLAMA_MODEL: ${DELIVERY_LLM_MODEL:-gpt-oss:20b}
+      ORCHESTRATOR_NUM_CTX: ${DELIVERY_NUM_CTX:-8192}
+      # gpt-oss streams its thinking only when reasoning is enabled explicitly.
+      # Set DELIVERY_REASONING=false for models without thinking (e.g. llama3.1).
+      ORCHESTRATOR_REASONING: ${DELIVERY_REASONING:-true}
+      MANUALS_DIR: /data/manuals
+      GUEST_QR_BASE_URL: http://localhost:${DELIVERY_APP_PORT:-8080}/machine
+    volumes:
+      - backend-data:/app/data
+      - type: bind
+        source: ./data/manuals
+        target: /data/manuals
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      agents:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "127.0.0.1:${DELIVERY_APP_PORT:-8080}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:3000/api/health]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  langfuse-web:
+    image: langfuse/langfuse:3@sha256:a343f64e035eb01aeea358703a0428945d909d01e19452509a5a830862dda878
+    environment:
+      <<: *langfuse-env
+      HOSTNAME: 0.0.0.0
+      LANGFUSE_INIT_ORG_ID: arol
+      LANGFUSE_INIT_ORG_NAME: AROL
+      LANGFUSE_INIT_PROJECT_ID: arol-fleet
+      LANGFUSE_INIT_PROJECT_NAME: AROL Fleet Management
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-arol-local-demo
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-arol-local-demo
+      LANGFUSE_INIT_USER_EMAIL: docente@arol.local
+      LANGFUSE_INIT_USER_NAME: Docente
+      LANGFUSE_INIT_USER_PASSWORD: ArolDemo2026!
+    ports:
+      - "127.0.0.1:${DELIVERY_LANGFUSE_PORT:-3000}:3000"
+    depends_on: *langfuse-dependencies
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/public/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 30
+    restart: unless-stopped
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3@sha256:8a28c946bb5401eef488153fa294db5a79bd99dd5c90db8e4d39559374c9ebd3
+    environment: *langfuse-env
+    depends_on: *langfuse-dependencies
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: arol-demo-postgres
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, langfuse, -d, langfuse]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.3@sha256:b627d7a9bc0e0c1bac26cdbe9d2fc6316faa29c5d8a174f28f5abd57d0fa6ba2
+    environment:
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: arol-demo-clickhouse
+    volumes:
+      - langfuse-clickhouse:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8123/ping]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
+    command: [redis-server, --requirepass, arol-demo-redis, --maxmemory-policy, noeviction]
+    environment:
+      REDISCLI_AUTH: arol-demo-redis
+    volumes:
+      - langfuse-redis:/data
+    healthcheck:
+      test: [CMD-SHELL, "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:73297936408b731668ca0e835ac9add1a35cb6026a125c2f0cd476d9ef48222c
+    entrypoint: [sh, -c]
+    command: ['mkdir -p /data/langfuse && exec minio server --address ":9000" /data']
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: arol-demo-minio
+    volumes:
+      - langfuse-minio:/data
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  manuals-index:
+  backend-data:
+  backoffice-data:
+  langfuse-postgres:
+  langfuse-clickhouse:
+  langfuse-clickhouse-logs:
+  langfuse-redis:
+  langfuse-minio:

@@ -63,6 +63,10 @@ Request and response schemas are in `shared/contracts/` (`manuals.py`, `docs.py`
 
 ## Manual ingestion
 
+For the self-contained delivery, ingestion runs automatically before the agents
+start; see [SETUP.md](../SETUP.md). The instructions below are for the
+development stack.
+
 The Manuals Agent needs a Chroma index built from the PDFs in `data/manuals/` (repo root). The ingestion:
 
 1. reads each `<serialNumber>_manual_<LANG>.pdf`;
@@ -72,16 +76,23 @@ The Manuals Agent needs a Chroma index built from the PDFs in `data/manuals/` (r
 With Docker:
 
 ```bash
-docker compose exec agents python -m manuals_agent.ingestion
+docker compose stop frontend backend agents
+docker compose run --rm --no-deps agents python -m manuals_agent.ingestion
 ```
 
-Then restart the agents, because the Chroma client is opened only at startup:
+Then start the application again so the agents open the updated index:
 
 ```bash
-docker compose restart agents
+docker compose up -d agents backend frontend
 ```
 
-It takes several minutes (about 2155 chunks, one embedding call each). The script is idempotent per manual: if you run it again, it skips the manuals already indexed and only adds new ones. To rebuild the whole index (for example after changing `EMBEDDING_MODEL`), delete `agents/data/chroma/` and run it again.
+It takes several minutes (embeddings are computed in batches of 20 chunks).
+Completed PDFs are tracked with a content hash and chunk count in
+`ingestion-manifest.json`. Unchanged files are skipped; changed or interrupted
+files are rebuilt, and removed PDFs are removed from the index. Changing
+`EMBEDDING_MODEL` rebuilds the index automatically. Existing indexes without a
+manifest are rebuilt once. Run ingestion while the agents are stopped to avoid
+concurrent access to Chroma, then start the agents again.
 
 ## Running locally
 

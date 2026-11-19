@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The single .env of the project lives at the repo root (<repo>/agents/core/config.py
@@ -16,7 +17,10 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str
     OLLAMA_NUM_CTX: int = 16384
+    OLLAMA_REQUEST_TIMEOUT_SECONDS: float = Field(default=100.0, gt=0)
     EMBEDDING_MODEL: str = "nomic-embed-text"
+    # The NVIDIA delivery override must not silently fall back to CPU.
+    SETUP_REQUIRE_GPU: bool = False
 
     # Other examples:
     # ANTHROPIC_API_KEY: str | None = None
